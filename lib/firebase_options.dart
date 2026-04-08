@@ -23,9 +23,15 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        return ios;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for ios - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.macOS:
-        return macos;
+        throw UnsupportedError(
+          'DefaultFirebaseOptions have not been configured for macos - '
+          'you can reconfigure this by running the FlutterFire CLI again.',
+        );
       case TargetPlatform.windows:
         return windows;
       case TargetPlatform.linux:
@@ -58,26 +64,6 @@ class DefaultFirebaseOptions {
     projectId: 'example-f5ba9',
     databaseURL: 'https://example-f5ba9-default-rtdb.firebaseio.com',
     storageBucket: 'example-f5ba9.firebasestorage.app',
-  );
-
-  static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyBaUKDh3hvxhlTxyLQcdnYcxzeVgCkN_ow',
-    appId: '1:648895799301:ios:ec48cbc005f1f8b0d1fc6c',
-    messagingSenderId: '648895799301',
-    projectId: 'example-f5ba9',
-    databaseURL: 'https://example-f5ba9-default-rtdb.firebaseio.com',
-    storageBucket: 'example-f5ba9.firebasestorage.app',
-    iosBundleId: 'com.example.dddd',
-  );
-
-  static const FirebaseOptions macos = FirebaseOptions(
-    apiKey: 'AIzaSyBaUKDh3hvxhlTxyLQcdnYcxzeVgCkN_ow',
-    appId: '1:648895799301:ios:ec48cbc005f1f8b0d1fc6c',
-    messagingSenderId: '648895799301',
-    projectId: 'example-f5ba9',
-    databaseURL: 'https://example-f5ba9-default-rtdb.firebaseio.com',
-    storageBucket: 'example-f5ba9.firebasestorage.app',
-    iosBundleId: 'com.example.dddd',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
