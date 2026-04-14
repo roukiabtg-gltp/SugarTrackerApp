@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'patient_profile_page.dart';
+// تأكدي من استيراد ملف البروفايل الذي أنشأتِه
+import 'patient_profile_page.dart'; 
 
 class PatientsPage extends StatefulWidget {
   const PatientsPage({super.key});
@@ -13,197 +14,52 @@ class PatientsPage extends StatefulWidget {
 class _PatientsPageState extends State<PatientsPage> {
   final DatabaseReference _dbRef = FirebaseDatabase.instance.ref('users');
   final String? doctorId = FirebaseAuth.instance.currentUser?.uid;
+  
   String searchQuery = "";
-
-  // 🔹 إضافة مريض (نافذة محسنة)
-  void _showAddPatientDialog() {
-    final firstNameController = TextEditingController();
-    final lastNameController = TextEditingController();
-    final emailController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text("إضافة مريض جديد", textAlign: TextAlign.center, style: TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _buildPopupField(firstNameController, "الاسم الأول", Icons.person_outline),
-              const SizedBox(height: 10),
-              _buildPopupField(lastNameController, "اللقب", Icons.family_restroom),
-              const SizedBox(height: 10),
-              _buildPopupField(emailController, "البريد الإلكتروني", Icons.email_outlined),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء", style: TextStyle(color: Colors.grey))),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A237E), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-            onPressed: () {
-              if (firstNameController.text.isNotEmpty && emailController.text.isNotEmpty) {
-                _addNewPatient(firstNameController.text, lastNameController.text, emailController.text);
-                Navigator.pop(context);
-              }
-            },
-            child: const Text("حفظ المريض", style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPopupField(TextEditingController controller, String hint, IconData icon) {
-    return TextField(
-      controller: controller,
-      textAlign: TextAlign.right,
-      decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: const Color(0xFF1A237E)),
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.grey[100],
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-      ),
-    );
-  }
-
-  void _addNewPatient(String fName, String lName, String email) {
-    _dbRef.push().set({
-      'first_name': fName,
-      'last_name': lName,
-      'email': email,
-      'doctorId': doctorId,
-      'status': 'active'
-    });
-  }
-
-  void _deletePatient(String id) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("تأكيد الحذف"),
-        content: const Text("هل أنت متأكد من إزالة هذا المريض من قائمتك؟"),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text("تراجع")),
-          TextButton(onPressed: () { _dbRef.child(id).remove(); Navigator.pop(context); }, child: const Text("حذف", style: TextStyle(color: Colors.red))),
-        ],
-      ),
-    );
-  }
+  String selectedStatus = "All Status";
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddPatientDialog,
-        backgroundColor: const Color(0xFF1A237E),
-        child: const Icon(Icons.add, color: Colors.white),
-      ),
       body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 30),
+        padding: const EdgeInsets.all(30),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("دليل المرضى", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
-            const SizedBox(height: 5),
-            Text("إدارة ومتابعة مرضى العيادة", style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-            const SizedBox(height: 25),
-            
-            // 🔍 Search Bar المحسن
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(15),
-                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 10, offset: const Offset(0, 4))],
-              ),
-              child: TextField(
-                onChanged: (value) => setState(() => searchQuery = value.toLowerCase()),
-                textAlign: TextAlign.right,
-                decoration: const InputDecoration(
-                  hintText: "ابحث باسم المريض أو البريد الإلكتروني...",
-                  prefixIcon: Icon(Icons.search, color: Color(0xFF1A237E)),
-                  border: InputBorder.none,
-                  contentPadding: EdgeInsets.symmetric(vertical: 15),
+            // العنوان وزر الإضافة
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  "Patients",
+                  style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF1A237E)),
                 ),
-              ),
+                _buildAddPatientButton(),
+              ],
             ),
             const SizedBox(height: 25),
 
+            // شريط البحث والفلاتر
+            _buildFilterBar(),
+
+            const SizedBox(height: 25),
+
+            // الجدول الاحترافي
             Expanded(
-              child: StreamBuilder(
-                stream: _dbRef.orderByChild('doctorId').equalTo(doctorId).onValue,
-                builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
-                    return Center(child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.person_search, size: 80, color: Colors.grey[300]),
-                        const Text("لا يوجد مرضى مضافين بعد", style: TextStyle(color: Colors.grey)),
-                      ],
-                    ));
-                  }
-
-                  Map<dynamic, dynamic> values = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
-                  List<Map<dynamic, dynamic>> patients = [];
-
-                  values.forEach((key, value) {
-                    String fullName = "${value['first_name'] ?? ""} ${value['last_name'] ?? ""}".trim();
-                    if (fullName.isEmpty) fullName = "اسم مجهول";
-
-                    if (fullName.toLowerCase().contains(searchQuery) || (value['email'] ?? "").toLowerCase().contains(searchQuery)) {
-                      patients.add({"id": key, "name": fullName, "email": value['email'] ?? "N/A", "status": value['status'] ?? "inactive"});
-                    }
-                  });
-
-                  return ListView.builder(
-                    itemCount: patients.length,
-                    itemBuilder: (context, index) {
-                      final p = patients[index];
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 15),
-                        padding: const EdgeInsets.all(15),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(15),
-                          border: Border.all(color: Colors.grey.shade100),
-                        ),
-                        child: Row(
-                          children: [
-                            CircleAvatar(
-                              radius: 25,
-                              backgroundColor: const Color(0xFF1A237E).withOpacity(0.1),
-                              child: Text(p['name'][0].toUpperCase(), style: const TextStyle(color: Color(0xFF1A237E), fontWeight: FontWeight.bold)),
-                            ),
-                            const SizedBox(width: 15),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(p['name'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                                  Text(p['email'], style: TextStyle(color: Colors.grey[600], fontSize: 13)),
-                                ],
-                              ),
-                            ),
-                            _buildStatusBadge(p['status']),
-                            const SizedBox(width: 10),
-                            IconButton(
-                              icon: const Icon(Icons.arrow_forward_ios, size: 18, color: Colors.blue),
-                              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => PatientProfilePage(patientId: p['id']))),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.delete_outline, size: 20, color: Colors.redAccent),
-                              onPressed: () => _deletePatient(p['id']),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(15),
+                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+                ),
+                child: Column(
+                  children: [
+                    _buildTableHeader(),
+                    const Divider(height: 1),
+                    Expanded(child: _buildPatientsList()),
+                  ],
+                ),
               ),
             ),
           ],
@@ -212,17 +68,170 @@ class _PatientsPageState extends State<PatientsPage> {
     );
   }
 
-  Widget _buildStatusBadge(String status) {
-    bool isActive = status == "active";
+  // ودجت شريط الفلترة المنظم
+  Widget _buildFilterBar() {
+    return Row(
+      children: [
+        Expanded(
+          flex: 3,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 15),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: TextField(
+              onChanged: (val) => setState(() => searchQuery = val.toLowerCase()),
+              decoration: const InputDecoration(
+                hintText: "Search patients...",
+                icon: Icon(Icons.search, color: Colors.grey),
+                border: InputBorder.none,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 15),
+        _buildStatusDropdown(),
+        const SizedBox(width: 15),
+        _buildFilterIconButton(),
+      ],
+    );
+  }
+
+  Widget _buildStatusDropdown() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: isActive ? Colors.green.withOpacity(0.1) : Colors.red.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
       ),
-      child: Text(
-        isActive ? "نشط" : "خامل",
-        style: TextStyle(color: isActive ? Colors.green : Colors.red, fontSize: 12, fontWeight: FontWeight.bold),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: selectedStatus,
+          items: ["All Status", "Critical", "Normal", "Warning"]
+              .map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 14))))
+              .toList(),
+          onChanged: (val) => setState(() => selectedStatus = val!),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterIconButton() {
+    return OutlinedButton.icon(
+      onPressed: () {},
+      icon: const Icon(Icons.filter_list, color: Colors.black87, size: 20),
+      label: const Text("Filters", style: TextStyle(color: Colors.black87)),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        side: BorderSide(color: Colors.grey.shade300),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
+  Widget _buildAddPatientButton() {
+    return ElevatedButton.icon(
+      onPressed: () { /* كود إضافة مريض */ },
+      icon: const Icon(Icons.add, color: Colors.white),
+      label: const Text("Add Patient", style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: Colors.blue,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        elevation: 0,
+      ),
+    );
+  }
+
+  Widget _buildTableHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 20),
+      child: Row(
+        children: const [
+          Expanded(flex: 3, child: Text("Patient Name", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+          Expanded(flex: 1, child: Text("Age", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+          Expanded(flex: 2, child: Text("Status", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+          Expanded(flex: 2, child: Text("Value", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+          Expanded(flex: 1, child: Text("Actions", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPatientsList() {
+    return StreamBuilder(
+      stream: _dbRef.orderByChild('doctorId').equalTo(doctorId).onValue,
+      builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) return const Center(child: Text("No patients found"));
+
+        Map<dynamic, dynamic> values = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+        List<Map> patients = [];
+        values.forEach((key, value) {
+          String firstName = value['first_name'] ?? "";
+          String lastName = value['last_name'] ?? "";
+          String fullName = "$firstName $lastName".trim();
+          
+          double glucose = double.tryParse(value['glucoseLevel']?.toString() ?? "0") ?? 0.0;
+          String status = (glucose > 180 || (glucose < 70 && glucose > 0)) ? "Critical" : "Normal";
+
+          if (fullName.toLowerCase().contains(searchQuery) && 
+             (selectedStatus == "All Status" || status == selectedStatus)) {
+            patients.add({"id": key, ...value, "status": status, "fullName": fullName});
+          }
+        });
+
+        return ListView.separated(
+          itemCount: patients.length,
+          separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFF1F1F1)),
+          itemBuilder: (context, index) => _buildPatientRow(patients[index]),
+        );
+      },
+    );
+  }
+
+  Widget _buildPatientRow(Map p) {
+    Color statusColor = p['status'] == "Critical" ? Colors.red : Colors.green;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 25, vertical: 18),
+      child: Row(
+        children: [
+          Expanded(flex: 3, child: Text(p['fullName'], style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15))),
+          Expanded(flex: 1, child: Text("${p['age'] ?? '--'}", textAlign: TextAlign.center)),
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
+                child: Text(p['status'].toLowerCase(), style: TextStyle(color: statusColor, fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
+          ),
+          Expanded(flex: 2, child: Text("${p['glucoseLevel'] ?? '0'} mg/dL", textAlign: TextAlign.center, style: const TextStyle(fontWeight: FontWeight.w600))),
+          Expanded(
+            flex: 1,
+            child: IconButton(
+              icon: const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.blue),
+              onPressed: () {
+                // الانتقال لصفحة البروفايل مع تمرير البيانات
+                Navigator.push(
+  context,
+  MaterialPageRoute(
+    builder: (context) => PatientProfilePage(
+      patientId: p['id'],      // إرسال الـ ID
+      patientName: p['fullName'], // إرسال الاسم (هذا هو البارامتر الذي كان يسبب الخطأ)
+    ),
+  ),
+);
+              },
+            ),
+          ),
+        ],
       ),
     );
   }

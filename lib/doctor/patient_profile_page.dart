@@ -1,330 +1,266 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:intl/intl.dart';
 
 class PatientProfilePage extends StatefulWidget {
   final String patientId;
-  const PatientProfilePage({super.key, required this.patientId});
+  final String patientName;
+
+  const PatientProfilePage({
+    super.key,
+    required this.patientId,
+    required this.patientName,
+  });
 
   @override
   State<PatientProfilePage> createState() => _PatientProfilePageState();
 }
 
-class _PatientProfilePageState extends State<PatientProfilePage> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  final DatabaseReference _rootRef = FirebaseDatabase.instance.ref();
-
-  @override
-  void initState() {
-    super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-  }
-
-  // دالة لجلب الأيقونة واللون بناءً على نوع القياس
-  Map<String, dynamic> _getStyle(String type) {
-    if (type.contains("سكر")) {
-      return {"icon": Icons.bloodtype, "color": Colors.redAccent, "bg": Colors.red[50]};
-    } else if (type.contains("ضغط")) {
-      return {"icon": Icons.favorite, "color": Colors.purple, "bg": Colors.purple[50]};
-    } else if (type.contains("زيارة")) {
-      return {"icon": Icons.local_hospital, "color": Colors.teal, "bg": Colors.teal[50]};
-    }
-    return {"icon": Icons.straighten, "color": Colors.blueGrey, "bg": Colors.blueGrey[50]};
-  }
-
-  int _calculateAge(String? birthDateStr) {
-    if (birthDateStr == null || birthDateStr.isEmpty) return 0;
-    try {
-      DateFormat format = DateFormat("d/M/yyyy");
-      DateTime birthDate = format.parse(birthDateStr);
-      DateTime today = DateTime.now();
-      int age = today.year - birthDate.year;
-      if (today.month < birthDate.month || (today.month == birthDate.month && today.day < birthDate.day)) age--;
-      return age < 0 ? 0 : age;
-    } catch (e) { return 0; }
-  }
-
-  Map<String, dynamic> _performSmartDiagnosis(List<Map<dynamic, dynamic>> records) {
-    if (records.isEmpty) return {"text": "لا توجد بيانات", "color": Colors.grey};
-    try {
-      final lastMedical = records.firstWhere(
-        (r) => (r['type']?.toString().contains("سكر") ?? false) || (r['type']?.toString().contains("ضغط") ?? false),
-        orElse: () => {},
-      );
-      if (lastMedical.isEmpty) return {"text": "مستقرة", "color": Colors.green};
-      double val = double.tryParse(lastMedical['value']?.toString().split(' ')[0] ?? '0') ?? 0;
-      String type = lastMedical['type']?.toString() ?? "";
-      if (type.contains("سكر")) {
-        if (val > 140) return {"text": "مرتفعة", "color": Colors.orange};
-        if (val < 70) return {"text": "منخفضة", "color": Colors.blue};
-      }
-    } catch (e) { return {"text": "تحليل البيانات...", "color": Colors.blueGrey}; }
-    return {"text": "مستقرة", "color": Colors.green};
-  }
+class _PatientProfilePageState extends State<PatientProfilePage> {
+  // مرجع لقاعدة البيانات Realtime Database
+  final DatabaseReference _dbRef = FirebaseDatabase.instance.ref();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF1F3F9), // خلفية أهدأ قليلاً
+      backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
-        title: const Text("الملف الطبي الذكي", style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: const Color(0xFF1A237E),
-        centerTitle: true,
+        backgroundColor: Colors.white,
         elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios, color: Colors.grey, size: 20),
+          onPressed: () => Navigator.pop(context),
+        ),
+        title: const Text("Back to Patients", style: TextStyle(color: Colors.grey, fontSize: 16)),
       ),
       body: StreamBuilder(
-        stream: _rootRef.onValue,
+        // جلب بيانات المريض الشخصية من مسار users
+        stream: _dbRef.child('users').child(widget.patientId).onValue,
         builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-          if (!snapshot.hasData || snapshot.data!.snapshot.value == null) return const Center(child: Text("لا توجد بيانات"));
-
-          final allData = Map<dynamic, dynamic>.from(snapshot.data!.snapshot.value as Map);
-          final userData = allData['users']?[widget.patientId] ?? {};
-          
-          List<Map<dynamic, dynamic>> allRecords = [];
-          if (allData['measurements']?[widget.patientId] != null) {
-            Map mData = allData['measurements'][widget.patientId];
-            mData.forEach((k, v) => allRecords.add(Map<dynamic, dynamic>.from(v)));
-            allRecords.sort((a, b) => (b['timestamp'] ?? 0).compareTo(a['timestamp'] ?? 0));
+          Map<dynamic, dynamic>? patientData;
+          if (snapshot.hasData && snapshot.data!.snapshot.value != null) {
+            patientData = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
           }
 
-          final measurements = allRecords.where((r) => r['type'] != "زيارة عيادة").toList();
-          final visits = allRecords.where((r) => r['type'] == "زيارة عيادة").toList();
+          // استخراج البيانات الحقيقية من Firebase
+          String firstName = patientData?['first_name'] ?? "";
+          String lastName = patientData?['last_name'] ?? "";
+          // إذا كان الاسم فارغاً في الداتابيز، نستخدم الاسم الذي وصل من الصفحة السابقة
+          String fullName = (firstName.isEmpty && lastName.isEmpty) ? widget.patientName : "$firstName $lastName";
+          String birthDate = patientData?['birth_date'] ?? "Not Recorded";
+          String email = patientData?['email'] ?? "No Email";
+          String gender = patientData?['gender'] ?? "Not Recorded";
 
-          int age = _calculateAge(userData['birth_date']);
-          var diag = _performSmartDiagnosis(measurements);
-          String lastVisit = visits.isNotEmpty ? visits.first['date'] : "لا يوجد";
+          return SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // كرت معلومات المريض العلوي (الآن يعرض البيانات الحقيقية)
+                _buildPatientHeaderCard(fullName, birthDate, email, gender),
+                const SizedBox(height: 24),
+                
+                // تنبيه الحالات الحرجة 
+                _buildCriticalAlertBanner(),
+                const SizedBox(height: 24),
 
-          return Column(
-            children: [
-              _buildHeader(userData, age, diag, lastVisit),
-              _buildTabBar(),
-              Expanded(
-                child: TabBarView(
-                  controller: _tabController,
-                  children: [
-                    _buildEnhancedList(measurements),
-                    _buildEnhancedList(visits, isVisit: true),
-                    _buildNotesTab(userData['notes'] ?? 'لا توجد ملاحظات طبية حالياً'),
-                  ],
-                ),
-              ),
-            ],
+                // قسم التبويبات والقياسات الحقيقية (تم تعديل التبويبات هنا)
+                _buildMainContentSection(),
+              ],
+            ),
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddEntryDialog,
-        backgroundColor: const Color(0xFF1A237E),
-        child: const Icon(Icons.add, size: 30, color: Colors.white),
       ),
     );
   }
 
-  // تصميم الهيدر الجديد
-  Widget _buildHeader(Map user, int age, Map diag, String lastVisit) {
+  Widget _buildPatientHeaderCard(String name, String birth, String mail, String sex) {
     return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.only(bottom: 30, left: 20, right: 20, top: 10),
-      decoration: const BoxDecoration(
-        color: Color(0xFF1A237E),
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(40), bottomRight: Radius.circular(40)),
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade100),
       ),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              radius: 30,
-              backgroundColor: Colors.white24,
-              child: Text(user['first_name']?[0] ?? "P", style: const TextStyle(fontSize: 24, color: Colors.white)),
+          CircleAvatar(
+            radius: 45,
+            backgroundColor: const Color(0xFFE3F2FD),
+            child: Text(
+              name.isNotEmpty ? name[0].toUpperCase() : "P",
+              style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Colors.blue),
             ),
-            title: Text("${user['first_name'] ?? ''} ${user['last_name'] ?? ''}", 
-                style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-            subtitle: Text("آخر زيارة: $lastVisit", style: const TextStyle(color: Colors.white70, fontSize: 12)),
-            trailing: _statusBadge(diag['text'], diag['color']),
           ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(15),
-            decoration: BoxDecoration(color: Colors.white.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+          const SizedBox(width: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _infoItem("العمر", "$age سنة", Icons.calendar_today),
-                _infoItem("الزمرة", user['blood_type'] ?? "N/A", Icons.water_drop),
-                _infoItem("الجنس", user['gender'] ?? "أنثى", Icons.person),
+                Text(name, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A1C1E))),
+                const SizedBox(height: 12),
+                Text("Birth Date: $birth  •  Gender: $sex", style: const TextStyle(color: Colors.grey, fontSize: 15)),
+                const SizedBox(height: 8),
+                Text("📧 $mail", style: const TextStyle(color: Colors.grey, fontSize: 14)),
               ],
             ),
-          )
+          ),
+          Column(
+            children: [
+              OutlinedButton(onPressed: () {}, child: const Text("Edit Profile")),
+              const SizedBox(height: 12),
+              ElevatedButton(
+                onPressed: () {},
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+                child: const Text("Schedule Appointment", style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  // قائمة القياسات والزيارات بشكل مطور (بطاقات احترافية مع شريط جانبي)
-  Widget _buildEnhancedList(List list, {bool isVisit = false}) {
-    if (list.isEmpty) return const Center(child: Text("لا توجد سجلات مسجلة"));
-    return ListView.builder(
-      padding: const EdgeInsets.all(15),
-      itemCount: list.length,
-      itemBuilder: (context, i) {
-        final style = _getStyle(list[i]['type'] ?? "");
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 4))],
-          ),
-          child: IntrinsicHeight(
-            child: Row(
+  Widget _buildCriticalAlertBanner() {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF5F5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.shade100),
+      ),
+      child: const Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red, size: 28),
+          SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // الشريط الملون الجانبي
-                Container(
-                  width: 6,
-                  decoration: BoxDecoration(
-                    color: style['color'],
-                    borderRadius: const BorderRadius.only(topRight: Radius.circular(15), bottomRight: Radius.circular(15)),
-                  ),
-                ),
-                const SizedBox(width: 15),
-                // الأيقونة الدائرية
-                CircleAvatar(
-                  backgroundColor: style['bg'],
-                  child: Icon(style['icon'], color: style['color'], size: 20),
-                ),
-                const SizedBox(width: 15),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 15),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(list[i]['type'] ?? '', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        const SizedBox(height: 4),
-                        Text(list[i]['date'] ?? '', style: TextStyle(color: Colors.grey[600], fontSize: 12)),
-                      ],
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(15),
-                  child: Text(
-                    list[i]['value'] ?? '',
-                    style: TextStyle(color: style['color'], fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                ),
+                Text("Latest Status Update", style: TextStyle(color: Color(0xFFC62828), fontWeight: FontWeight.bold, fontSize: 18)),
+                SizedBox(height: 4),
+                Text("Check recent glucose measurements below for patient health tracking.", style: TextStyle(color: Color(0xFFC62828))),
               ],
             ),
           ),
-        );
-      },
-    );
-  }
-
-  // نافذة الإضافة المحدثة
-  void _showAddEntryDialog() {
-    final controller = TextEditingController();
-    String type = "قياس السكر";
-    DateTime selectedDate = DateTime.now();
-
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-          title: const Text("إضافة سجل جديد", textAlign: TextAlign.center),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: type,
-                items: ["قياس السكر", "قياس الضغط", "زيارة عيادة"].map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
-                onChanged: (v) => setState(() => type = v!),
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: Colors.grey[100],
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                ),
-              ),
-              const SizedBox(height: 15),
-              if (type == "زيارة عيادة")
-                GestureDetector(
-                  onTap: () async {
-                    final DateTime? picked = await showDatePicker(
-                      context: context, initialDate: selectedDate, firstDate: DateTime(2000), lastDate: DateTime(2101),
-                    );
-                    if (picked != null) setState(() => selectedDate = picked);
-                  },
-                  child: Container(
-                    padding: const EdgeInsets.all(15),
-                    decoration: BoxDecoration(color: Colors.blue[50], borderRadius: BorderRadius.circular(15)),
-                    child: Row(children: [const Icon(Icons.calendar_month, color: Colors.blue), const SizedBox(width: 10), Text(DateFormat('yyyy-MM-dd').format(selectedDate))]),
-                  ),
-                )
-              else
-                TextField(
-                  controller: controller,
-                  keyboardType: TextInputType.text,
-                  decoration: InputDecoration(
-                    labelText: "القيمة المكتشفة",
-                    filled: true,
-                    fillColor: Colors.grey[100],
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
-                  ),
-                ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text("إلغاء")),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF1A237E), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
-              onPressed: () {
-                _rootRef.child('measurements/${widget.patientId}').push().set({
-                  'type': type,
-                  'value': type == "زيارة عيادة" ? "تمت" : controller.text,
-                  'timestamp': ServerValue.timestamp,
-                  'date': type == "زيارة عيادة" ? DateFormat('yyyy-MM-dd').format(selectedDate) : DateFormat('yyyy-MM-dd HH:mm').format(DateTime.now()),
-                });
-                Navigator.pop(context);
-              },
-              child: const Text("حفظ السجل", style: TextStyle(color: Colors.white)),
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
 
-  // عناصر مساعدة
-  Widget _buildTabBar() => TabBar(
-    controller: _tabController,
-    labelColor: const Color(0xFF1A237E),
-    indicatorColor: const Color(0xFF1A237E),
-    indicatorWeight: 3,
-    tabs: const [Tab(text: "القياسات"), Tab(text: "الأجندة"), Tab(text: "ملاحظات")],
-  );
+  Widget _buildMainContentSection() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey.shade100),
+      ),
+      child: Column(
+        children: [
+          // شريط التبويبات المعدل ليصبح مثل الصورة (خط بسيط تحت الكلمة)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: const BoxDecoration(
+              border: Border(bottom: BorderSide(color: Color(0xFFEEEEEE), width: 1)),
+            ),
+            child: const Row(
+              children: [
+                _TabItem(title: "Measurements", isActive: true),
+                _TabItem(title: "Analytics"),
+                _TabItem(title: "Prescriptions"),
+                _TabItem(title: "Notes"),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text("Recent Measurements", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 24),
+                StreamBuilder(
+                  stream: _dbRef.child('measurements').child(widget.patientId).onValue,
+                  builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+                    if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+                      return const Center(child: Padding(
+                        padding: EdgeInsets.all(20.0),
+                        child: Text("No measurements recorded yet."),
+                      ));
+                    }
 
-  Widget _buildNotesTab(String n) => Container(
-    padding: const EdgeInsets.all(20),
-    margin: const EdgeInsets.all(15),
-    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
-    child: SingleChildScrollView(child: Text(n, style: const TextStyle(fontSize: 16, height: 1.5))),
-  );
+                    Map<dynamic, dynamic> measurements = snapshot.data!.snapshot.value as Map<dynamic, dynamic>;
+                    List<MapEntry<dynamic, dynamic>> sortedList = measurements.entries.toList()
+                      ..sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
 
-  Widget _infoItem(String l, String v, IconData icon) => Column(
-    children: [
-      Icon(icon, color: Colors.white60, size: 18),
-      const SizedBox(height: 5),
-      Text(l, style: const TextStyle(color: Colors.white70, fontSize: 10)),
-      Text(v, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-    ],
-  );
+                    return Table(
+                      columnWidths: const {0: FlexColumnWidth(2.5), 1: FlexColumnWidth(2), 2: FlexColumnWidth(1.5)},
+                      children: [
+                        _buildTableRowHeader(),
+                        ...sortedList.map((entry) {
+                          var m = entry.value;
+                          return _buildDataRow(
+                            m['date']?.toString().split('T').first ?? "", 
+                            m['category'] ?? "Glucose", 
+                            "${m['value'] ?? ""} mg/dL", 
+                            "normal"
+                          );
+                        }).toList(),
+                      ],
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _statusBadge(String t, Color c) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-    decoration: BoxDecoration(color: c.withOpacity(0.2), borderRadius: BorderRadius.circular(12), border: Border.all(color: c, width: 1)),
-    child: Text(t, style: TextStyle(color: c, fontSize: 12, fontWeight: FontWeight.bold)),
-  );
+  TableRow _buildTableRowHeader() {
+    return const TableRow(
+      children: [
+        Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text("Date", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+        Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text("Category", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+        Padding(padding: EdgeInsets.symmetric(vertical: 12), child: Text("Value", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600))),
+      ],
+    );
+  }
+
+  TableRow _buildDataRow(String date, String type, String value, String status) {
+    return TableRow(
+      children: [
+        Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(date)),
+        Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(type)),
+        Padding(padding: const EdgeInsets.symmetric(vertical: 16), child: Text(value, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.blue))),
+      ],
+    );
+  }
+}
+
+// تعديل تصميم الـ TabItem ليكون خط بسيط
+class _TabItem extends StatelessWidget {
+  final String title;
+  final bool isActive;
+  const _TabItem({required this.title, this.isActive = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 30),
+      padding: const EdgeInsets.symmetric(vertical: 15),
+      decoration: BoxDecoration(
+        border: isActive ? const Border(bottom: BorderSide(color: Colors.blue, width: 2.5)) : null,
+      ),
+      child: Text(
+        title, 
+        style: TextStyle(
+          color: isActive ? Colors.blue : Colors.grey, 
+          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          fontSize: 15,
+        )
+      ),
+    );
+  }
 }

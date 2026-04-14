@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart'; // سطر مهم جداً
-import 'firebase_options.dart'; // سطر مهم جداً
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
+// التعديل هنا: نستخدم المسار النسبي المباشر للتأكد
 import 'desktop/auth/login_desktop.dart';
+import 'doctor/doctor_main_layout.dart';
 
 void main() async {
-  // تأكدي من إضافة هذين السطرين
   WidgetsFlutterBinding.ensureInitialized();
   
   await Firebase.initializeApp(
@@ -26,7 +28,7 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1A237E)),
         useMaterial3: true,
       ),
-      home: const LoginDesktop(),
+      home: LoginDesktop(), 
     );
   }
 }
