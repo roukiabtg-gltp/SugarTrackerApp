@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 import '../../doctor/doctor_main_layout.dart'; 
+// تأكدي من إنشاء هذا الملف أو تغيير المسار حسب مشروعك
+import '../../secretary/nurse_main_layout.dart'; 
 import 'signup_desktop.dart';
 
 class LoginDesktop extends StatefulWidget {
@@ -24,13 +26,14 @@ class _LoginDesktopState extends State<LoginDesktop> {
       'email': 'البريد الإلكتروني',
       'password': 'كلمة المرور',
       'btn_login': 'دخول للنظام',
+      'no_account': 'ليس لديك حساب طبيب؟',
+      'signup': 'إنشاء حساب جديد',
       'app_desc': 'المنصة المتكاملة لمتابعة مرضى السكري',
     },
   };
 
   String _t(String key) => _localizedValues[_currentLang]?[key] ?? key;
 
-  // دالة الدخول (Login Logic)
   Future<void> _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
       _showError("يرجى ملء كافة الحقول");
@@ -53,8 +56,13 @@ class _LoginDesktopState extends State<LoginDesktop> {
             context, 
             MaterialPageRoute(builder: (context) => const DoctorMainLayout())
           );
-        } else if (role == 'nurse') {
-          _showError("واجهة الممرضة قيد التفعيل");
+        } 
+        // التعديل الأول: دعم دخول الممرضة/السكرتيرة
+        else if (role == 'nurse' || role == 'secretary') {
+          Navigator.pushReplacement(
+            context, 
+            MaterialPageRoute(builder: (context) => const NurseMainLayout())
+          );
         } else {
           _showError("عذراً، هذا الحساب لا يملك صلاحيات الدخول");
         }
@@ -110,7 +118,6 @@ class _LoginDesktopState extends State<LoginDesktop> {
         backgroundColor: const Color(0xFFF8FAFC),
         body: Row(
           children: [
-            // القسم الأيسر (اللوجو)
             Expanded(
               flex: 1,
               child: Container(
@@ -135,7 +142,6 @@ class _LoginDesktopState extends State<LoginDesktop> {
                 ),
               ),
             ),
-            // القسم الأيمن (الفورم)
             Expanded(
               flex: 1,
               child: Center(
@@ -157,16 +163,36 @@ class _LoginDesktopState extends State<LoginDesktop> {
                         width: double.infinity,
                         height: 56,
                         child: ElevatedButton(
-                          // تم الربط بالدالة هنا
                           onPressed: _isLoading ? null : _handleLogin, 
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF3B82F6),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                           ),
                           child: _isLoading 
-                            ? const CircularProgressIndicator(color: Colors.white)
+                            ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
                             : Text(_t('btn_login'), style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
                         ),
+                      ),
+                      
+                      // التعديل الثاني: إضافة زر الانتقال لإنشاء حساب جديد
+                      const SizedBox(height: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Text(_t('no_account'), style: const TextStyle(color: Color(0xFF64748B))),
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (context) => const SignUpScreen()),
+                              );
+                            },
+                            child: Text(
+                              _t('signup'),
+                              style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
