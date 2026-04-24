@@ -5,15 +5,20 @@ import 'firebase_options.dart';
 // التعديل هنا: نستخدم المسار النسبي المباشر للتأكد
 import 'desktop/auth/login_desktop.dart';
 import 'doctor/doctor_main_layout.dart';
-
+import 'package:firedart/firedart.dart';
+import 'package:flutter/foundation.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
 
-  runApp(const MyApp());
+  if (kIsWeb || defaultTargetPlatform == TargetPlatform.android) {
+    // الطريقة العادية للأندرويد والويب
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  } else {
+    // الطريقة السهلة للويندوز (بدون تعقيدات CMake)
+    Firestore.initialize("your-project-id"); // حطي الـ Project ID تاعك هنا
+  }
+
+  runApp(MyApp());
 }
 
 class MyApp extends StatelessWidget {
