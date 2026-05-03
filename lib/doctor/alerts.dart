@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'patient_profile_page.dart';
+// تأكد من أن مسار الـ UserModel صحيح في مشروعك
+import '../models/user_model.dart'; 
 
 class AlertsPage extends StatefulWidget {
   const AlertsPage({super.key});
@@ -19,12 +21,21 @@ class _AlertsPageState extends State<AlertsPage> {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: const Text("Alerts", style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.bold)),
+        title: const Text("Alerts", 
+          style: TextStyle(color: Color(0xFF1A1C1E), fontWeight: FontWeight.bold)),
         actions: [
           Stack(
             children: [
               IconButton(onPressed: () {}, icon: const Icon(Icons.notifications_none, color: Colors.grey)),
-              Positioned(right: 12, top: 12, child: Container(width: 8, height: 8, decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle))),
+              Positioned(
+                right: 12, 
+                top: 12, 
+                child: Container(
+                  width: 8, 
+                  height: 8, 
+                  decoration: const BoxDecoration(color: Colors.red, shape: BoxShape.circle)
+                )
+              ),
             ],
           ),
           const SizedBox(width: 10),
@@ -35,7 +46,7 @@ class _AlertsPageState extends State<AlertsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 1. قسم الإحصائيات (الكرتات الثلاثة العلوية)
+            // 1. قسم الإحصائيات
             StreamBuilder(
               stream: _dbRef.onValue,
               builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
@@ -60,7 +71,7 @@ class _AlertsPageState extends State<AlertsPage> {
 
             const SizedBox(height: 32),
 
-            // 2. قائمة التنبيهات غير المحلولة
+            // 2. قائمة التنبيهات
             Container(
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -76,7 +87,6 @@ class _AlertsPageState extends State<AlertsPage> {
                   ),
                   const Divider(height: 1),
                   
-                  // جلب بيانات الطوارئ الحقيقية
                   StreamBuilder(
                     stream: _dbRef.child('emergencies').onValue,
                     builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
@@ -113,7 +123,6 @@ class _AlertsPageState extends State<AlertsPage> {
     );
   }
 
-  // تصميم الكرتات العلوية
   Widget _buildTopStatCard(String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
@@ -136,7 +145,6 @@ class _AlertsPageState extends State<AlertsPage> {
     );
   }
 
-  // تصميم عنصر التنبيه الواحد (Alert Tile) كما في الصورة
   Widget _buildAlertTile({
     required String id, required String name, required String age, 
     required String condition, required String currentVal, 
@@ -174,13 +182,36 @@ class _AlertsPageState extends State<AlertsPage> {
                   ],
                 ),
               ),
-              // الأزرار
+              // الأزرار المحدثة
               Row(
                 children: [
                   OutlinedButton(onPressed: () {}, child: const Text("Resolve", style: TextStyle(color: Colors.black87))),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (context) => PatientProfilePage(patientId: id, patientName: name))),
+                    onPressed: () {
+                      // بناء كائن المريض للمرور لصفحة التفاصيل
+                      final patientObj = UserModel(
+                        id: id,
+                        firstName: name.split(' ').first,
+                        lastName: name.contains(' ') ? name.split(' ').last : '',
+                        email: "N/A",
+                        phone: "N/A",
+                        birthDate: "",
+                        gender: "N/A",
+                        bloodType: "N/A",
+                        role: "patient",
+                      );
+
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => PatientProfilePage(
+                            patientId: patientObj.id,
+                            patientName: patientObj.firstName + (patientObj.lastName.isNotEmpty ? ' ' + patientObj.lastName : ''),
+                          ),
+                        ),
+                      );
+                    },
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blue, elevation: 0),
                     child: const Text("View Patient", style: TextStyle(color: Colors.white)),
                   ),
@@ -189,7 +220,6 @@ class _AlertsPageState extends State<AlertsPage> {
             ],
           ),
           const SizedBox(height: 20),
-          // كرت القيم (Current Value & Threshold)
           Row(
             children: [
               const SizedBox(width: 50),

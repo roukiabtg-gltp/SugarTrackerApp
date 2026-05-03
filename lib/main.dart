@@ -4,7 +4,6 @@ import 'firebase_options.dart';
 
 // التعديل هنا: نستخدم المسار النسبي المباشر للتأكد
 import 'desktop/auth/login_desktop.dart';
-import 'doctor/doctor_main_layout.dart';
 import 'package:firedart/firedart.dart';
 import 'package:flutter/foundation.dart';
 void main() async {
