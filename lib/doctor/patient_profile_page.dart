@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
+import 'package:fl_chart/fl_chart.dart';
+import 'analytics_view.dart';
 
 class PatientProfilePage extends StatefulWidget {
   final String patientId, patientName;
@@ -13,14 +15,23 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
   final _db = FirebaseDatabase.instance.ref();
   int _tab = 0;
   String _type = "Glucose", _timing = "Fasting";
+  String _selectedFilter = '7 DAYS'; // للتحكم في الأزرار العلوية
   final _ctrl = TextEditingController();
+  final TextEditingController _msgController = TextEditingController();
+  final TextEditingController _prescController = TextEditingController();
 
   @override
-  void dispose() { _ctrl.dispose(); super.dispose(); }
+  void dispose() { 
+    _ctrl.dispose(); 
+    _msgController.dispose();
+    _prescController.dispose();
+    super.dispose(); 
+  }
   // دالة لحذف سجل القياس من قاعدة البيانات
 Future<void> _deleteMeasurement(String measId) async {
   await _db.child('measurements').child(widget.patientId).child(measId).remove();
 }
+
 
  String _age(String? s) {
   if (s == null || s.isEmpty) return "--";
@@ -218,6 +229,17 @@ Widget _statusChip(String s) {
       "Normal":   [const Color(0xFFDFF5EC), const Color(0xFF4CAF81)],
     };
     return colors[s] ?? colors["Normal"]!;
+  }
+
+  void _sendData(String path, String text) {
+    if (text.trim().isEmpty) return;
+    // path سيكون إما 'messages' أو 'prescriptions'
+    _db.child(path).child(widget.patientId).push().set({
+      'content': text.trim(),
+      'sender': 'doctor',
+      'timestamp': ServerValue.timestamp,
+      'date': DateTime.now().toString().substring(0, 16),
+    });
   }
 
   @override
@@ -451,6 +473,14 @@ Widget _statusChip(String s) {
                         padding: const EdgeInsets.all(24),
                         child: _tab == 0
                             ? _measTab(meas)
+                            : _tab == 1
+                            ? AnalyticsView(measurements: meas ?? {})
+                            : _tab == 2
+                            ? _buildNotesTab()
+                            : _tab == 3
+                            ? _buildPrescriptionTab()
+                            : _tab == 4
+                            ? _buildMessagesTab()
                             : Center(child: Padding(
                                 padding: const EdgeInsets.all(40),
                                 child: Text(
@@ -631,4 +661,279 @@ Widget _statusChip(String s) {
     });
     if (ctx.mounted) Navigator.pop(ctx);
   }
+
+  Widget _buildAnalyticsTab(Map<dynamic, dynamic> measurements) {
+    // تصفية البيانات بناءً على الفلتر المختار
+    final filteredEntries = _getFilteredData(measurements);
+    final spotsData = _convertToSpots(filteredEntries);
+    final spots = spotsData.map((e) => e['spot'] as FlSpot).toList();
+
+    return Container(
+      padding: const EdgeInsets.all(24),
+      color: Colors.white,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 1. العنوان والأزرار (Header)
+          _buildHeaderRow(),
+          const SizedBox(height: 20),
+          
+          // 2. دليل الألوان (Legend) كما في image_126098.png
+          _buildLegend(),
+          const SizedBox(height: 40),
+          
+          // 3. الرسم البياني (The Chart)
+          Expanded(
+            child: _buildLineChart(spots, spotsData),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<MapEntry> _getFilteredData(Map<dynamic, dynamic> measurements) {
+    var entries = measurements.entries.toList();
+    // sort by timestamp
+    entries.sort((a, b) {
+      int ta = a.value['timestamp'] ?? 0;
+      int tb = b.value['timestamp'] ?? 0;
+      return ta.compareTo(tb);
+    });
+    // filter based on _selectedFilter
+    DateTime now = DateTime.now();
+    int days;
+    if (_selectedFilter == '7 DAYS') days = 7;
+    else if (_selectedFilter == '30 DAYS') days = 30;
+    else if (_selectedFilter == '90 DAYS') days = 90;
+    else days = 7; // default
+    DateTime start = now.subtract(Duration(days: days));
+    entries = entries.where((e) {
+      int ts = e.value['timestamp'] ?? 0;
+      DateTime dt = DateTime.fromMillisecondsSinceEpoch(ts);
+      return dt.isAfter(start);
+    }).toList();
+    return entries;
+  }
+
+  List<Map<String, dynamic>> _convertToSpots(List<MapEntry> entries) {
+    return entries.asMap().entries.map((e) {
+      int index = e.key;
+      double value = double.tryParse(e.value.value['value']?.toString() ?? '0') ?? 0;
+      String type = e.value.value['type'] ?? 'Glucose';
+      String status = _getStatus(type, value.toString());
+      return {
+        'spot': FlSpot(index.toDouble(), value),
+        'status': status,
+      };
+    }).toList();
+  }
+
+  Widget _buildHeaderRow() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text("Analytics", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Row(
+          children: ['7 DAYS', '30 DAYS', '90 DAYS'].map((filter) {
+            return Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: ElevatedButton(
+                onPressed: () => setState(() => _selectedFilter = filter),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _selectedFilter == filter ? Colors.blue : Colors.grey[300],
+                  foregroundColor: _selectedFilter == filter ? Colors.white : Colors.black,
+                ),
+                child: Text(filter),
+              ),
+            );
+          }).toList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLegend() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        _legendItem(Colors.green, "Normal"),
+        const SizedBox(width: 20),
+        _legendItem(Colors.yellow, "Warning"),
+        const SizedBox(width: 20),
+        _legendItem(Colors.red, "Critical"),
+      ],
+    );
+  }
+
+  Widget _legendItem(Color color, String text) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(text),
+      ],
+    );
+  }
+
+  Widget _buildLineChart(List<FlSpot> spots, List<Map<String, dynamic>> spotsData) {
+    if (spots.isEmpty) {
+      return Center(child: Text("No data to display"));
+    }
+    return LineChart(
+      LineChartData(
+        lineBarsData: [
+          LineChartBarData(
+            spots: spots,
+            isCurved: true,
+            color: Colors.blue,
+            barWidth: 4,
+            dotData: FlDotData(
+              show: true,
+              getDotPainter: (spot, percent, barData, index) {
+                String status = spotsData[index]['status'];
+                Color color;
+                switch (status) {
+                  case 'Critical': color = Colors.red; break;
+                  case 'Warning': color = Colors.orange; break;
+                  default: color = Colors.green;
+                }
+                return FlDotCirclePainter(
+                  color: color,
+                  strokeWidth: 2,
+                  strokeColor: Colors.white,
+                );
+              },
+            ),
+          ),
+        ],
+        titlesData: FlTitlesData(
+          bottomTitles: AxisTitles(
+            sideTitles: SideTitles(
+              showTitles: true,
+              getTitlesWidget: (value, meta) {
+                int index = value.toInt();
+                if (index >= spots.length) return Text('');
+                return Text('$index');
+              },
+            ),
+          ),
+          leftTitles: AxisTitles(
+            sideTitles: SideTitles(showTitles: true),
+          ),
+        ),
+        gridData: FlGridData(show: true),
+        borderData: FlBorderData(show: true),
+      ),
+    );
+  }
+
+  Widget _buildNotesTab() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Text(
+          "Notes - Coming soon",
+          style: const TextStyle(color: Colors.grey),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPrescriptionTab() {
+    return Container(
+      height: 300,
+      child: StreamBuilder(
+        stream: _db.child('prescriptions').child(widget.patientId).onValue,
+        builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
+          if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+            return const Center(child: Text('No prescriptions yet'));
+          }
+          Map data = snapshot.data!.snapshot.value as Map;
+          List<MapEntry> entries = data.entries.toList();
+          entries.sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
+          return ListView.builder(
+            itemCount: entries.length,
+            itemBuilder: (context, index) {
+              var item = entries[index].value;
+              return ListTile(
+                title: Text(item['content'] ?? ''),
+                subtitle: Text(_fmt(item['timestamp'])),
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildMessagesTab() {
+    return Column(
+      children: [
+        Container(
+          height: 300,
+          child: StreamBuilder(
+            stream: _db.child('messages').child(widget.patientId).onValue,
+            builder: (context, AsyncSnapshot<DatabaseEvent> snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+                return const Center(child: Text('No messages yet'));
+              }
+              Map data = snapshot.data!.snapshot.value as Map;
+              List<MapEntry> entries = data.entries.toList();
+              entries.sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
+              return ListView.builder(
+                itemCount: entries.length,
+                itemBuilder: (context, index) {
+                  var item = entries[index].value;
+                  return ListTile(
+                    title: Text(item['content'] ?? ''),
+                    subtitle: Text(_fmt(item['timestamp'])),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _msgController,
+                  decoration: InputDecoration(
+                    hintText: "اكتب هنا...",
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton(
+                icon: const Icon(Icons.send, color: Color(0xFF4F46E5)),
+                onPressed: () {
+                  _sendData('messages', _msgController.text);
+                  _msgController.clear();
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
+

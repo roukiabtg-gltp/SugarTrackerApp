@@ -1,9 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart'; // ستحتاجينها لتنسيق التاريخ تلقائياً
+import 'package:firebase_auth/firebase_auth.dart';
 
-class AppointmentPage extends StatelessWidget {
+class AppointmentPage extends StatefulWidget {
   const AppointmentPage({super.key});
+
+  @override
+  State<AppointmentPage> createState() => _AppointmentPageState();
+}
+
+class _AppointmentPageState extends State<AppointmentPage> {
+  String? doctorUid; // متغير لحفظ ID الطبيب
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDoctorId(); // استدعاء الدالة عند التشغيل
+  }
+
+  Future<void> _fetchDoctorId() async {
+    // 1. الحصول على UID السكرتيرة الحالية (نورين)
+    final currentUser = FirebaseAuth.instance.currentUser;
+    
+    if (currentUser != null) {
+      // 2. جلب وثيقتها من مجموعة users كما في (image_f4c0dc.png)
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      setState(() {
+        // 3. تخزين doctorId لاستخدامه في عرض المواعيد
+        doctorUid = doc['doctorId']; 
+      });
+    }
+  }
+
+  // دالة إضافة موعد جديد
+  void createNewAppointment(String patientName) {
+    FirebaseFirestore.instance.collection('appointments').add({
+      'patientName': patientName,
+      'doctorId': doctorUid, // الربط المباشر مع الطبيب
+      'status': 'en_attente',
+      'timestamp': FieldValue.serverTimestamp(),
+      'date': DateTime.now().toString().split(' ')[0], // تاريخ اليوم
+    });
+  }
 
   // --- دالة لإظهار نافذة إضافة موعد جديد ---
   void _showAddAppointmentDialog(BuildContext context) {
@@ -72,6 +115,7 @@ class AppointmentPage extends StatelessWidget {
                     'date': dateController.text,
                     'time': timeController.text,
                     'type': selectedType,
+                    'doctorId': doctorUid, // إضافة doctorId
                     'status': 'confirme',
                     'createdAt': FieldValue.serverTimestamp(),
                   });

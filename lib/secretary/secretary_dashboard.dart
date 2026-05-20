@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 
 class SecretaryDashboard extends StatefulWidget {
@@ -10,6 +12,31 @@ class SecretaryDashboard extends StatefulWidget {
 
 class _SecretaryDashboardState extends State<SecretaryDashboard> {
   int _selectedIndex = 0;
+  String? doctorUid; // متغير لحفظ ID الطبيب
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchDoctorId(); // استدعاء الدالة عند التشغيل
+  }
+
+  Future<void> _fetchDoctorId() async {
+    // 1. الحصول على UID السكرتيرة الحالية (نورين)
+    final currentUser = FirebaseAuth.instance.currentUser;
+    
+    if (currentUser != null) {
+      // 2. جلب وثيقتها من مجموعة users كما في (image_f4c0dc.png)
+      DocumentSnapshot doc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(currentUser.uid)
+          .get();
+
+      setState(() {
+        // 3. تخزين doctorId لاستخدامه في عرض المواعيد
+        doctorUid = doc['doctorId']; 
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

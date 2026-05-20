@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart'; // تأكد من استيراد فيربيز
 import '../../services/auth_service.dart';
 import '../../doctor/doctor_main_layout.dart'; 
-// تأكدي من إنشاء هذا الملف أو تغيير المسار حسب مشروعك
 import '../../secretary/nurse_main_layout.dart'; 
 import 'signup_desktop.dart';
 
@@ -29,10 +29,33 @@ class _LoginDesktopState extends State<LoginDesktop> {
       'no_account': 'ليس لديك حساب طبيب؟',
       'signup': 'إنشاء حساب جديد',
       'app_desc': 'المنصة المتكاملة لمتابعة مرضى السكري',
+      // إضافة جديدة للترجمة
+      'forgot_password': 'نسيت كلمة المرور؟',
+      'reset_link_sent': 'تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني',
+      'enter_email': 'أدخل بريدك الإلكتروني لاستعادة الحساب',
+      'send': 'إرسال',
+      'cancel': 'إلغاء',
     },
   };
 
   String _t(String key) => _localizedValues[_currentLang]?[key] ?? key;
+
+  // إضافة جديدة: دالة التعامل مع نسيان كلمة المرور
+  Future<void> _handleForgotPassword() async {
+    String email = _emailController.text.trim();
+    
+    if (email.isEmpty) {
+      _showError("يرجى كتابة البريد الإلكتروني أولاً في الحقل المخصص");
+      return;
+    }
+
+    try {
+      await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+      _showSuccess(_t('reset_link_sent'));
+    } catch (e) {
+      _showError("تأكد من صحة البريد الإلكتروني المكتوب");
+    }
+  }
 
   Future<void> _handleLogin() async {
     if (_emailController.text.isEmpty || _passwordController.text.isEmpty) {
@@ -57,7 +80,6 @@ class _LoginDesktopState extends State<LoginDesktop> {
             MaterialPageRoute(builder: (context) => const DoctorMainLayout())
           );
         } 
-        // التعديل الأول: دعم دخول الممرضة/السكرتيرة
         else if (role == 'nurse' || role == 'secretary') {
           Navigator.pushReplacement(
             context, 
@@ -77,6 +99,13 @@ class _LoginDesktopState extends State<LoginDesktop> {
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: Colors.redAccent),
+    );
+  }
+
+  // إضافة جديدة لإظهار رسالة نجاح
+  void _showSuccess(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating, backgroundColor: Colors.green),
     );
   }
 
@@ -158,7 +187,17 @@ class _LoginDesktopState extends State<LoginDesktop> {
                       _customTextField(controller: _emailController, label: _t('email'), icon: Icons.email_outlined),
                       const SizedBox(height: 24),
                       _customTextField(controller: _passwordController, label: _t('password'), icon: Icons.lock_outline_rounded, isPassword: true),
-                      const SizedBox(height: 32),
+                      
+                      // إضافة جديدة: زر نسيت كلمة المرور
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: _handleForgotPassword,
+                          child: Text(_t('forgot_password'), style: const TextStyle(color: Color(0xFF64748B))),
+                        ),
+                      ),
+
+                      const SizedBox(height: 16),
                       SizedBox(
                         width: double.infinity,
                         height: 56,
@@ -174,7 +213,6 @@ class _LoginDesktopState extends State<LoginDesktop> {
                         ),
                       ),
                       
-                      // التعديل الثاني: إضافة زر الانتقال لإنشاء حساب جديد
                       const SizedBox(height: 24),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.center,

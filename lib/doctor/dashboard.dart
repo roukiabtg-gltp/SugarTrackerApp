@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ProfessionalDashboard extends StatefulWidget {
   const ProfessionalDashboard({super.key});
@@ -61,7 +62,38 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                     const SizedBox(width: 20),
                     _buildStatCard("Critical Cases", criticalCases.toString(), Icons.warning_amber_rounded, Colors.red, "+2"),
                     const SizedBox(width: 20),
-                    _buildStatCard("Today's Appts", "18", Icons.calendar_today_outlined, Colors.green, "-3"),
+                    // عرض عدد المواعيد في بطاقة "Today's Appts"
+                    StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('appointments')
+                          .where('doctorId', isEqualTo: doctorId)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasError) return _buildStatCard(
+                          "Today's Appts",
+                          "0",
+                          Icons.calendar_today_outlined,
+                          Colors.green,
+                          "-",
+                        );
+                        if (!snapshot.hasData) return _buildStatCard(
+                          "Today's Appts",
+                          "0",
+                          Icons.calendar_today_outlined,
+                          Colors.green,
+                          "-",
+                        );
+
+                        int count = snapshot.data!.docs.length;
+                        return _buildStatCard(
+                          "Today's Appts",
+                          count.toString(),
+                          Icons.calendar_today_outlined,
+                          Colors.green,
+                          "-",
+                        );
+                      },
+                    ),
                     const SizedBox(width: 20),
                     _buildStatCard("Avg Health Score", "82.5", Icons.show_chart_rounded, Colors.purple, "+5.2%"),
                   ],

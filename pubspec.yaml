@@ -46,6 +46,9 @@ dependencies:
   fl_chart: ^0.70.0
   google_fonts: ^6.2.1 # لرسم منحنيات السكر للطبيب [cite: 12]
   firedart: ^0.9.1
+  #fl_chart: ^0.66.0
+ 
+  
 dev_dependencies:
   flutter_test:
     sdk: flutter

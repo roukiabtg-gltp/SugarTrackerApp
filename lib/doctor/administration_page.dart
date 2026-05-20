@@ -97,40 +97,42 @@ class _AdministrationPageState extends State<AdministrationPage> {
           const SizedBox(height: 24),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue, 
+              backgroundColor: Colors.blue,
               padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
             ),
-            onPressed: () => _registerNurse(emailController.text, passController.text, nameController.text),
+            onPressed: () async {
+              try {
+                // 1. الحصول على ID الطبيب الحالي أوتوماتيكياً
+                String currentDoctorId = FirebaseAuth.instance.currentUser!.uid;
+
+                // 2. إنشاء الحساب في Authentication (يؤدي لإنشاء UID جديد للسكرتيرة)
+                UserCredential result = await FirebaseAuth.instance.createUserWithEmailAndPassword(
+                  email: emailController.text.trim(),
+                  password: passController.text.trim(),
+                );
+
+                // 3. تخزين البيانات في Firestore مع الربط الصحيح
+                await FirebaseFirestore.instance.collection('users').doc(result.user!.uid).set({
+                  'uid': result.user!.uid,           // هذا الـ UID الخاص بنورين (تلقائي)
+                  'doctorId': currentDoctorId,       // هذا الـ UID الخاص بالطبيب (تلقائي)
+                  'name': nameController.text,
+                  'email': emailController.text,
+                  'role': 'nurse',                   // تحديد رتبتها كممرضة/سكرتيرة
+                  'specialty': 'Nurse Assistant',
+                });
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('تم إنشاء حساب السكرتيرة وربطها بك بنجاح!')),
+                );
+              } catch (e) {
+                print("Error: $e");
+              }
+            },
             child: const Text("Create Nurse Account", style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
     );
-  }
-
-  // دالة تسجيل الممرضة في Firebase
-  Future<void> _registerNurse(String email, String password, String name) async {
-    try {
-      // 1. إنشاء الحساب في Auth
-      UserCredential userCredential = await FirebaseAuth.instance.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
-
-      // 2. تخزين البيانات في Firestore مع تحديد الـ Role كممرضة
-      await FirebaseFirestore.instance.collection('users').doc(userCredential.user!.uid).set({
-        'name': name,
-        'email': email,
-        'role': 'nurse', // تحديد دور الممرضة
-        'doctorId': FirebaseAuth.instance.currentUser!.uid, // ربطها بهذا الطبيب
-        'specialty': 'Nurse Assistant',
-        'uid': userCredential.user!.uid,
-      });
-
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Nurse account created successfully!")));
-    } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Error: $e")));
-    }
   }
 }

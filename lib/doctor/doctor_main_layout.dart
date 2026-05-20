@@ -3,7 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dashboard.dart'; 
 import 'patients.dart'; 
-import 'alerts.dart'; 
+import 'alerts.dart';
+import 'Appointment.dart'; // 🔥 استيراد صفحة المواعيد
 import 'administration_page.dart'; // 🔥 تأكدي من استيراد ملف صفحة الإدارة
 
 class DoctorMainLayout extends StatefulWidget {
@@ -21,8 +22,9 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
   final List<Widget> _pages = [   
     const ProfessionalDashboard(), 
     const PatientsPage(),          
+    AppointmentsPage(),             // 🔥 صفحة المواعيد
     const AlertsPage(),            
-    const AdministrationPage(),     // 🔥 أضفنا صفحة الإدارة هنا
+    const AdministrationPage(),     // 🔥 صفحة الإدارة
   ];
 
   @override
@@ -53,8 +55,9 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
                 // عناصر القائمة
                 _buildMenuItem(0, Icons.grid_view_rounded, "Dashboard"),
                 _buildMenuItem(1, Icons.people_outline_rounded, "Patients"),
-                _buildMenuItem(2, Icons.notifications_none_rounded, "Alerts"),
-                _buildMenuItem(3, Icons.admin_panel_settings_outlined, "Administration"), // 🔥 زر الإدارة الجديد
+                _buildMenuItem(2, Icons.calendar_today_outlined, "Appointments"),     // 🔥 زر المواعيد الجديد
+                _buildMenuItem(3, Icons.notifications_none_rounded, "Alerts"),
+                _buildMenuItem(4, Icons.admin_panel_settings_outlined, "Administration"), // 🔥 زر الإدارة
 
                 const Spacer(), 
 
