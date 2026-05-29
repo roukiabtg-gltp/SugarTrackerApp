@@ -40,6 +40,27 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   }
 
   // ─────────────────────────────────────────────────────────────
+  // DATA CLEANER & PARSER (CLEAN REGEX)
+  // ─────────────────────────────────────────────────────────────
+
+  double _parseValue(dynamic rawValue) {
+    if (rawValue == null) return 0.0;
+    
+    // إذا كانت القيمة رقماً بالفعل (int أو double)
+    if (rawValue is num) return rawValue.toDouble();
+
+    try {
+      String cleanStr = rawValue.toString().trim();
+      // استخراج الأرقام والنقاط العشرية فقط (تتخلص من mg/dL أو الفراغات)
+      cleanStr = cleanStr.replaceAll(RegExp(r'[^0-9.]'), '');
+      
+      return double.tryParse(cleanStr) ?? 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────
   // DATE PARSER
   // ─────────────────────────────────────────────────────────────
 
@@ -75,18 +96,15 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     Map<dynamic, dynamic> raw,
   ) {
     final now = DateTime.now();
-
     Duration duration;
 
     switch (selectedFilter) {
       case '24 HOURS':
         duration = const Duration(hours: 24);
         break;
-
       case '30 DAYS':
         duration = const Duration(days: 30);
         break;
-
       default:
         duration = const Duration(days: 7);
     }
@@ -97,16 +115,13 @@ class _AnalyticsViewState extends State<AnalyticsView> {
         .map(
           (e) => MapEntry<String, dynamic>(
             e.key.toString(),
-            Map<String, dynamic>.from(
-              e.value as Map,
-            ),
+            Map<String, dynamic>.from(e.value as Map),
           ),
         )
         .where((e) {
       final dt = _parseDate(
         e.value['timestamp'] ?? e.value['date'],
       );
-
       return dt != null && dt.isAfter(threshold);
     }).toList();
 
@@ -115,13 +130,10 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       final da = _parseDate(
         a.value['timestamp'] ?? a.value['date'],
       );
-
       final db = _parseDate(
         b.value['timestamp'] ?? b.value['date'],
       );
-
-      return (da ?? DateTime(0))
-          .compareTo(db ?? DateTime(0));
+      return (da ?? DateTime(0)).compareTo(db ?? DateTime(0));
     });
 
     return entries;
@@ -133,25 +145,17 @@ class _AnalyticsViewState extends State<AnalyticsView> {
 
   double _avg(List<double> values) {
     if (values.isEmpty) return 0;
-
-    return values.reduce((a, b) => a + b) /
-        values.length;
+    return values.reduce((a, b) => a + b) / values.length;
   }
 
   double _min(List<double> values) {
     if (values.isEmpty) return 0;
-
-    return values.reduce(
-      (a, b) => a < b ? a : b,
-    );
+    return values.reduce((a, b) => a < b ? a : b);
   }
 
   double _max(List<double> values) {
     if (values.isEmpty) return 0;
-
-    return values.reduce(
-      (a, b) => a > b ? a : b,
-    );
+    return values.reduce((a, b) => a > b ? a : b);
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -159,18 +163,9 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   // ─────────────────────────────────────────────────────────────
 
   Color _dotColor(double value) {
-    if (value < 70) {
-      return const Color(0xFF3B82F6);
-    }
-
-    if (value > 200) {
-      return const Color(0xFFEF4444);
-    }
-
-    if (value > 140) {
-      return const Color(0xFFF59E0B);
-    }
-
+    if (value < 70) return const Color(0xFF3B82F6);
+    if (value > 200) return const Color(0xFFEF4444);
+    if (value > 140) return const Color(0xFFF59E0B);
     return const Color(0xFF10B981);
   }
 
@@ -183,103 +178,59 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     return StreamBuilder<DatabaseEvent>(
       stream: getMeasurementsStream(),
       builder: (context, snapshot) {
-        if (snapshot.connectionState ==
-            ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(),
-          );
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
         }
 
-        if (!snapshot.hasData ||
-            snapshot.data!.snapshot.value == null) {
-          return _emptyState(
-            "No measurements found",
-          );
+        if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
+          return _emptyState("No measurements found");
         }
 
-        final rawMap =
-            snapshot.data!.snapshot.value as Map;
-
+        final rawMap = snapshot.data!.snapshot.value as Map;
         final filtered = _filterData(rawMap);
 
+        // تم التعديل هنا لـاستخدام الدالة الذكية الجديدة _parseValue
         final values = filtered
-            .map(
-              (e) =>
-                  double.tryParse(
-                    e.value['value']
-                            ?.toString() ??
-                        '0',
-                  ) ??
-                  0,
-            )
+            .map((e) => _parseValue(e.value['value']))
             .toList();
 
         final average = _avg(values);
-
         final minimum = _min(values);
-
         final maximum = _max(values);
 
-        final inRange = values
-            .where(
-              (v) => v >= 70 && v <= 140,
-            )
-            .length;
+        final inRange = values.where((v) => v >= 70 && v <= 140).length;
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
-            crossAxisAlignment:
-                CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-
               // ───────────────── HEADER
               Row(
-                mainAxisAlignment:
-                    MainAxisAlignment
-                        .spaceBetween,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Column(
-                    crossAxisAlignment:
-                        CrossAxisAlignment
-                            .start,
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
                         "Patient Analytics",
                         style: TextStyle(
                           fontSize: 24,
-                          fontWeight:
-                              FontWeight.bold,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-
                       const SizedBox(height: 4),
-
                       Text(
                         widget.patientName,
-                        style: TextStyle(
-                          color:
-                              Colors.grey.shade600,
-                        ),
+                        style: TextStyle(color: Colors.grey.shade600),
                       ),
                     ],
                   ),
-
                   Row(
                     children: [
-                      _viewToggleBtn(
-                        Icons.show_chart,
-                        true,
-                        "Chart",
-                      ),
-
+                      _viewToggleBtn(Icons.show_chart, true, "Chart"),
                       const SizedBox(width: 10),
-
-                      _viewToggleBtn(
-                        Icons.table_chart,
-                        false,
-                        "Table",
-                      ),
+                      _viewToggleBtn(Icons.table_chart, false, "Table"),
                     ],
                   ),
                 ],
@@ -291,53 +242,27 @@ class _AnalyticsViewState extends State<AnalyticsView> {
               Wrap(
                 spacing: 10,
                 children: filters.map((filter) {
-                  final selected =
-                      selectedFilter ==
-                          filter;
-
+                  final selected = selectedFilter == filter;
                   return GestureDetector(
-                    onTap: () {
-                      setState(() {
-                        selectedFilter =
-                            filter;
-                      });
-                    },
+                    onTap: () => setState(() => selectedFilter = filter),
                     child: AnimatedContainer(
-                      duration:
-                          const Duration(
-                        milliseconds: 250,
-                      ),
-                      padding:
-                          const EdgeInsets
-                              .symmetric(
+                      duration: const Duration(milliseconds: 250),
+                      padding: const EdgeInsets.symmetric(
                         horizontal: 18,
                         vertical: 10,
-                      ),
-                      decoration:
-                          BoxDecoration(
-                        color: selected
-                            ? const Color(
-                                0xFF2563EB)
-                            : Colors.white,
-                        borderRadius:
-                            BorderRadius
-                                .circular(12),
+                  ),
+                      decoration: BoxDecoration(
+                        color: selected ? const Color(0xFF2563EB) : Colors.white,
+                        borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: selected
-                              ? const Color(
-                                  0xFF2563EB)
-                              : Colors
-                                  .grey.shade300,
+                          color: selected ? const Color(0xFF2563EB) : Colors.grey.shade300,
                         ),
                       ),
                       child: Text(
                         filter,
                         style: TextStyle(
-                          color: selected
-                              ? Colors.white
-                              : Colors.grey,
-                          fontWeight:
-                              FontWeight.w600,
+                          color: selected ? Colors.white : Colors.grey,
+                          fontWeight: FontWeight.w600,
                         ),
                       ),
                     ),
@@ -350,40 +275,13 @@ class _AnalyticsViewState extends State<AnalyticsView> {
               // ───────────────── STATS
               Row(
                 children: [
-
-                  _statCard(
-                    "Average",
-                    "${average.toStringAsFixed(1)} mg/dL",
-                    Icons.analytics,
-                    const Color(0xFF2563EB),
-                  ),
-
+                  _statCard("Average", "${average.toStringAsFixed(1)} mg/dL", Icons.analytics, const Color(0xFF2563EB)),
                   const SizedBox(width: 12),
-
-                  _statCard(
-                    "Minimum",
-                    "${minimum.toStringAsFixed(1)} mg/dL",
-                    Icons.arrow_downward,
-                    const Color(0xFF10B981),
-                  ),
-
+                  _statCard("Minimum", "${minimum.toStringAsFixed(1)} mg/dL", Icons.arrow_downward, const Color(0xFF10B981)),
                   const SizedBox(width: 12),
-
-                  _statCard(
-                    "Maximum",
-                    "${maximum.toStringAsFixed(1)} mg/dL",
-                    Icons.arrow_upward,
-                    const Color(0xFFEF4444),
-                  ),
-
+                  _statCard("Maximum", "${maximum.toStringAsFixed(1)} mg/dL", Icons.arrow_upward, const Color(0xFFEF4444)),
                   const SizedBox(width: 12),
-
-                  _statCard(
-                    "In Range",
-                    "$inRange / ${filtered.length}",
-                    Icons.check_circle,
-                    const Color(0xFF8B5CF6),
-                  ),
+                  _statCard("In Range", "$inRange / ${filtered.length}", Icons.check_circle, const Color(0xFF8B5CF6)),
                 ],
               ),
 
@@ -391,11 +289,9 @@ class _AnalyticsViewState extends State<AnalyticsView> {
 
               // ───────────────── CHART / TABLE
               filtered.isEmpty
-                  ? _emptyState(
-                      "No data for selected period",
-                    )
+                  ? _emptyState("No data for selected period")
                   : showChart
-                      ? _buildChart(filtered)
+                      ? _buildChart(filtered, values) // تم تمرير قيم المعالجة مسبقاً لتحسين الأداء
                       : _buildTable(filtered),
 
               const SizedBox(height: 30),
@@ -412,65 +308,34 @@ class _AnalyticsViewState extends State<AnalyticsView> {
 
   Widget _buildChart(
     List<MapEntry<String, dynamic>> entries,
+    List<double> parsedValues,
   ) {
     final spots = <FlSpot>[];
-
     final labels = <String>[];
-
-    final values = <double>[];
 
     for (int i = 0; i < entries.length; i++) {
       final data = entries[i].value;
+      final value = parsedValues[i]; // استخدام القيمة النظيفة مباشرة
 
-      final value =
-          double.tryParse(
-            data['value']
-                    ?.toString() ??
-                '0',
-          ) ??
-          0;
+      final dt = _parseDate(data['timestamp'] ?? data['date']);
 
-      final dt = _parseDate(
-        data['timestamp'] ??
-            data['date'],
-      );
-
-      spots.add(
-        FlSpot(
-          i.toDouble(),
-          value,
-        ),
-      );
-
-      values.add(value);
-
-      labels.add(
-        dt != null
-            ? DateFormat(
-                'dd/MM\nHH:mm',
-              ).format(dt)
-            : '',
-      );
+      spots.add(FlSpot(i.toDouble(), value));
+      labels.add(dt != null ? DateFormat('dd/MM\nHH:mm').format(dt) : '');
     }
 
-    final maxValue =
-        values.isEmpty
-            ? 250
-            : values.reduce(
-                (a, b) => a > b ? a : b,
-              );
+    final maxValue = parsedValues.isEmpty
+        ? 250.0
+        : parsedValues.reduce((a, b) => a > b ? a : b);
 
     return Container(
       height: 480,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withOpacity(0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 18,
             offset: const Offset(0, 6),
           ),
@@ -478,387 +343,157 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       ),
       child: Column(
         children: [
-
-          // TITLE
           Row(
-            mainAxisAlignment:
-                MainAxisAlignment
-                    .spaceBetween,
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
                 "Blood Glucose Trend",
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight:
-                      FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-
               Container(
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 6,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                 decoration: BoxDecoration(
-                  color: const Color(
-                    0xFFEFF6FF,
-                  ),
-                  borderRadius:
-                      BorderRadius.circular(
-                    30,
-                  ),
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(30),
                 ),
                 child: Text(
                   "${entries.length} Measurements",
                   style: const TextStyle(
-                    color:
-                        Color(0xFF2563EB),
-                    fontWeight:
-                        FontWeight.bold,
+                    color: Color(0xFF2563EB),
+                    fontWeight: FontWeight.bold,
                     fontSize: 12,
                   ),
                 ),
               ),
             ],
           ),
-
           const SizedBox(height: 18),
-
-          // LEGEND
           Wrap(
             spacing: 18,
             runSpacing: 8,
             children: [
-              _legendItem(
-                const Color(0xFF10B981),
-                "Normal",
-              ),
-
-              _legendItem(
-                const Color(0xFFF59E0B),
-                "Warning",
-              ),
-
-              _legendItem(
-                const Color(0xFFEF4444),
-                "Critical",
-              ),
-
-              _legendItem(
-                const Color(0xFF3B82F6),
-                "Low",
-              ),
+              _legendItem(const Color(0xFF10B981), "Normal"),
+              _legendItem(const Color(0xFFF59E0B), "Warning"),
+              _legendItem(const Color(0xFFEF4444), "Critical"),
+              _legendItem(const Color(0xFF3B82F6), "Low"),
             ],
           ),
-
           const SizedBox(height: 20),
-
           Expanded(
             child: LineChart(
               LineChartData(
-
                 minY: 40,
-
-                maxY: maxValue < 250
-                    ? 250
-                    : maxValue + 30,
-
-                clipData:
-                    FlClipData.all(),
-
-                // GRID
+                maxY: maxValue < 250 ? 250 : maxValue + 30,
+                clipData: const FlClipData.all(),
                 gridData: FlGridData(
                   show: true,
                   horizontalInterval: 20,
                   verticalInterval: 1,
-
-                  getDrawingHorizontalLine:
-                      (value) {
-                    return FlLine(
-                      color:
-                          Colors.grey.shade200,
-                      strokeWidth: 1,
-                    );
-                  },
-
-                  getDrawingVerticalLine:
-                      (value) {
-                    return FlLine(
-                      color:
-                          Colors.grey.shade100,
-                      strokeWidth: 1,
-                    );
-                  },
+                  getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1),
+                  getDrawingVerticalLine: (value) => FlLine(color: Colors.grey.shade100, strokeWidth: 1),
                 ),
-
-                // NORMAL RANGE
-                rangeAnnotations:
-                    RangeAnnotations(
+                rangeAnnotations: RangeAnnotations(
                   horizontalRangeAnnotations: [
                     HorizontalRangeAnnotation(
                       y1: 70,
                       y2: 140,
-                      color: Colors.green
-                          .withOpacity(0.08),
+                      color: Colors.green.withOpacity(0.08),
                     ),
                   ],
                 ),
-
-                // TITLES
-                titlesData:
-                    FlTitlesData(
-
-                  topTitles:
-                      const AxisTitles(
-                    sideTitles:
-                        SideTitles(
-                      showTitles: false,
+                titlesData: FlTitlesData(
+                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                  leftTitles: AxisTitles(
+                    axisNameWidget: const Padding(
+                      padding: EdgeInsets.only(bottom: 8),
+                      child: Text("mg/dL", style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-                  ),
-
-                  rightTitles:
-                      const AxisTitles(
-                    sideTitles:
-                        SideTitles(
-                      showTitles: false,
-                    ),
-                  ),
-
-                  // LEFT
-                  leftTitles:
-                      AxisTitles(
-                    axisNameWidget:
-                        const Padding(
-                      padding:
-                          EdgeInsets.only(
-                        bottom: 8,
-                      ),
-                      child: Text(
-                        "mg/dL",
-                        style: TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
-                    ),
-
-                    sideTitles:
-                        SideTitles(
+                    sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 45,
                       interval: 20,
-
-                      getTitlesWidget:
-                          (value, meta) {
-                        return Text(
-                          value
-                              .toInt()
-                              .toString(),
-                          style:
-                              const TextStyle(
-                            fontSize: 11,
-                            color:
-                                Colors.grey,
-                          ),
-                        );
-                      },
+                      getTitlesWidget: (value, meta) => Text(
+                        value.toInt().toString(),
+                        style: const TextStyle(fontSize: 11, color: Colors.grey),
+                      ),
                     ),
                   ),
-
-                  // BOTTOM
-                  bottomTitles:
-                      AxisTitles(
-                    axisNameWidget:
-                        const Padding(
-                      padding:
-                          EdgeInsets.only(
-                        top: 10,
-                      ),
-                      child: Text(
-                        "Timeline",
-                        style: TextStyle(
-                          fontWeight:
-                              FontWeight.bold,
-                        ),
-                      ),
+                  bottomTitles: AxisTitles(
+                    axisNameWidget: const Padding(
+                      padding: EdgeInsets.only(top: 10),
+                      child: Text("Timeline", style: TextStyle(fontWeight: FontWeight.bold)),
                     ),
-
-                    sideTitles:
-                        SideTitles(
+                    sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 60,
-
-                      interval:
-                          entries.length > 8
-                              ? (entries.length /
-                                      6)
-                                  .ceilToDouble()
-                              : 1,
-
-                      getTitlesWidget:
-                          (value, meta) {
-
-                        final index =
-                            value.toInt();
-
-                        if (index < 0 ||
-                            index >=
-                                labels.length) {
-                          return const SizedBox();
-                        }
-
+                      interval: entries.length > 8 ? (entries.length / 6).ceilToDouble() : 1,
+                      getTitlesWidget: (value, meta) {
+                        final index = value.toInt();
+                        if (index < 0 || index >= labels.length) return const SizedBox();
                         return Padding(
-                          padding:
-                              const EdgeInsets.only(
-                            top: 8,
-                          ),
+                          padding: const EdgeInsets.only(top: 8),
                           child: Text(
                             labels[index],
-                            textAlign:
-                                TextAlign.center,
-                            style:
-                                const TextStyle(
-                              fontSize: 9,
-                              color:
-                                  Colors.grey,
-                            ),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(fontSize: 9, color: Colors.grey),
                           ),
                         );
                       },
                     ),
                   ),
                 ),
-
-                // BORDER
-                borderData:
-                    FlBorderData(
-                  show: true,
-                  border: Border.all(
-                    color:
-                        Colors.grey.shade300,
-                  ),
-                ),
-
-                // TOUCH
-                lineTouchData:
-                    LineTouchData(
-                  handleBuiltInTouches:
-                      true,
-
-                  touchTooltipData:
-                      LineTouchTooltipData(
-                    tooltipRoundedRadius:
-                        12,
-
-                    getTooltipColor:
-                        (_) =>
-                            const Color(
-                              0xFF111827,
-                            ),
-
-                    getTooltipItems:
-                        (spotsTouched) {
-
-                      return spotsTouched.map(
-                        (spot) {
-
-                          String state =
-                              "Normal";
-
-                          if (spot.y < 70) {
-                            state = "Low";
-                          } else if (spot.y >
-                              200) {
-                            state =
-                                "Critical";
-                          } else if (spot.y >
-                              140) {
-                            state =
-                                "Warning";
-                          }
-
-                          return LineTooltipItem(
-                            "${spot.y.toStringAsFixed(1)} mg/dL\n$state",
-
-                            const TextStyle(
-                              color:
-                                  Colors.white,
-                              fontWeight:
-                                  FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          );
-                        },
-                      ).toList();
+                borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade300)),
+                lineTouchData: LineTouchData(
+                  handleBuiltInTouches: true,
+                  touchTooltipData: LineTouchTooltipData(
+                    tooltipRoundedRadius: 12,
+                    getTooltipColor: (_) => const Color(0xFF111827),
+                    getTooltipItems: (spotsTouched) {
+                      return spotsTouched.map((spot) {
+                        String state = "Normal";
+                        if (spot.y < 70) {
+                          state = "Low";
+                        } else if (spot.y > 200) {
+                          state = "Critical";
+                        } else if (spot.y > 140) {
+                          state = "Warning";
+                        }
+                        return LineTooltipItem(
+                          "${spot.y.toStringAsFixed(1)} mg/dL\n$state",
+                          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        );
+                      }).toList();
                     },
                   ),
                 ),
-
-                // LINE
                 lineBarsData: [
-
                   LineChartBarData(
-
                     spots: spots,
-
                     isCurved: false,
-
-                    color:
-                        const Color(0xFF2563EB),
-
+                    color: const Color(0xFF2563EB),
                     barWidth: 3,
-
-                    isStrokeCapRound:
-                        true,
-
-                    belowBarData:
-                        BarAreaData(
+                    isStrokeCapRound: true,
+                    belowBarData: BarAreaData(
                       show: true,
-
-                      gradient:
-                          LinearGradient(
-                        begin:
-                            Alignment
-                                .topCenter,
-
-                        end:
-                            Alignment
-                                .bottomCenter,
-
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
                         colors: [
-                          const Color(
-                            0xFF2563EB,
-                          ).withOpacity(0.2),
-
-                          const Color(
-                            0xFF2563EB,
-                          ).withOpacity(0.01),
+                          const Color(0xFF2563EB).withOpacity(0.2),
+                          const Color(0xFF2563EB).withOpacity(0.01),
                         ],
                       ),
                     ),
-
                     dotData: FlDotData(
                       show: true,
-
-                      getDotPainter:
-                          (
-                        spot,
-                        percent,
-                        barData,
-                        index,
-                      ) {
-
-                        final value =
-                            values[index];
-
+                      getDotPainter: (spot, percent, barData, index) {
+                        final value = parsedValues[index];
                         return FlDotCirclePainter(
                           radius: 5,
-                          color:
-                              _dotColor(value),
+                          color: _dotColor(value),
                           strokeWidth: 2,
-                          strokeColor:
-                              Colors.white,
+                          strokeColor: Colors.white,
                         );
                       },
                     ),
@@ -876,141 +511,61 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   // TABLE
   // ─────────────────────────────────────────────────────────────
 
-  Widget _buildTable(
-    List<MapEntry<String, dynamic>>
-        entries,
-  ) {
+  Widget _buildTable(List<MapEntry<String, dynamic>> entries) {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         child: DataTable(
           columns: const [
-
-            DataColumn(
-              label: Text("Date"),
-            ),
-
-            DataColumn(
-              label: Text("Value"),
-            ),
-
-            DataColumn(
-              label: Text("Status"),
-            ),
-
-            DataColumn(
-              label: Text("Source"),
-            ),
+            DataColumn(label: Text("Date")),
+            DataColumn(label: Text("Value")),
+            DataColumn(label: Text("Status")),
+            DataColumn(label: Text("Source")),
           ],
-
           rows: entries.map((e) {
-
             final data = e.value;
+            final value = _parseValue(data['value']); // استخدام الدالة الذكية
 
-            final value =
-                double.tryParse(
-                  data['value']
-                          ?.toString() ??
-                      '0',
-                ) ??
-                0;
+            final dt = _parseDate(data['timestamp'] ?? data['date']);
+            final date = dt != null ? DateFormat('dd/MM/yyyy HH:mm').format(dt) : '--';
+            final isDoctor = data['doctor_added'] == true;
 
-            final dt = _parseDate(
-              data['timestamp'] ??
-                  data['date'],
-            );
-
-            final date =
-                dt != null
-                    ? DateFormat(
-                        'dd/MM/yyyy HH:mm',
-                      ).format(dt)
-                    : '--';
-
-            final isDoctor =
-                data['doctor_added'] ==
-                    true;
-
-            String status =
-                "Normal";
-
-            Color color =
-                const Color(
-                  0xFF10B981,
-                );
+            String status = "Normal";
+            Color color = const Color(0xFF10B981);
 
             if (value < 70) {
               status = "Low";
-              color =
-                  const Color(
-                    0xFF3B82F6,
-                  );
+              color = const Color(0xFF3B82F6);
             } else if (value > 200) {
               status = "Critical";
-              color =
-                  const Color(
-                    0xFFEF4444,
-                  );
+              color = const Color(0xFFEF4444);
             } else if (value > 140) {
               status = "Warning";
-              color =
-                  const Color(
-                    0xFFF59E0B,
-                  );
+              color = const Color(0xFFF59E0B);
             }
 
             return DataRow(
               cells: [
-
-                DataCell(
-                  Text(date),
-                ),
-
-                DataCell(
-                  Text(
-                    "${value.toStringAsFixed(1)} mg/dL",
-                  ),
-                ),
-
+                DataCell(Text(date)),
+                DataCell(Text("${value.toStringAsFixed(1)} mg/dL")),
                 DataCell(
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 5,
-                    ),
-                    decoration:
-                        BoxDecoration(
-                      color: color
-                          .withOpacity(0.12),
-                      borderRadius:
-                          BorderRadius.circular(
-                        30,
-                      ),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(30),
                     ),
                     child: Text(
                       status,
-                      style: TextStyle(
-                        color: color,
-                        fontWeight:
-                            FontWeight.bold,
-                      ),
+                      style: TextStyle(color: color, fontWeight: FontWeight.bold),
                     ),
                   ),
                 ),
-
-                DataCell(
-                  Text(
-                    isDoctor
-                        ? "Doctor"
-                        : "Device",
-                  ),
-                ),
+                DataCell(Text(isDoctor ? "Doctor" : "Device")),
               ],
             );
           }).toList(),
@@ -1023,93 +578,50 @@ class _AnalyticsViewState extends State<AnalyticsView> {
   // HELPERS
   // ─────────────────────────────────────────────────────────────
 
-  Widget _viewToggleBtn(
-    IconData icon,
-    bool chart,
-    String tooltip,
-  ) {
-    final active =
-        showChart == chart;
-
+  Widget _viewToggleBtn(IconData icon, bool chart, String tooltip) {
+    final active = showChart == chart;
     return Tooltip(
       message: tooltip,
       child: InkWell(
-        onTap: () {
-          setState(() {
-            showChart = chart;
-          });
-        },
-        borderRadius:
-            BorderRadius.circular(10),
+        onTap: () => setState(() => showChart = chart),
+        borderRadius: BorderRadius.circular(10),
         child: Container(
-          padding:
-              const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: active
-                ? const Color(
-                    0xFFEFF6FF,
-                  )
-                : Colors.transparent,
-            borderRadius:
-                BorderRadius.circular(10),
+            color: active ? const Color(0xFFEFF6FF) : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(
-            icon,
-            color: active
-                ? const Color(
-                    0xFF2563EB,
-                  )
-                : Colors.grey,
-          ),
+          child: Icon(icon, color: active ? const Color(0xFF2563EB) : Colors.grey),
         ),
       ),
     );
   }
 
-  Widget _statCard(
-    String title,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _statCard(String title, String value, IconData icon, Color color) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: color.withOpacity(0.08),
-          borderRadius:
-              BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(18),
         ),
         child: Column(
-          crossAxisAlignment:
-              CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
-            Icon(
-              icon,
-              color: color,
-            ),
-
+            Icon(icon, color: color),
             const SizedBox(height: 10),
-
             Text(
               value,
               style: TextStyle(
-                fontWeight:
-                    FontWeight.bold,
+                fontWeight: FontWeight.bold,
                 fontSize: 16,
                 color: color,
               ),
             ),
-
             const SizedBox(height: 4),
-
             Text(
               title,
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 12,
-              ),
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
             ),
           ],
         ),
@@ -1117,32 +629,17 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     );
   }
 
-  Widget _legendItem(
-    Color color,
-    String text,
-  ) {
+  Widget _legendItem(Color color, String text) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-
         Container(
           width: 12,
           height: 12,
-          decoration: BoxDecoration(
-            color: color,
-            shape: BoxShape.circle,
-          ),
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
         ),
-
         const SizedBox(width: 6),
-
-        Text(
-          text,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
-        ),
+        Text(text, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
   }
@@ -1152,25 +649,11 @@ class _AnalyticsViewState extends State<AnalyticsView> {
       height: 300,
       child: Center(
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-
-            Icon(
-              Icons.bar_chart,
-              size: 60,
-              color: Colors.grey.shade300,
-            ),
-
+            Icon(Icons.bar_chart, size: 60, color: Colors.grey.shade300),
             const SizedBox(height: 14),
-
-            Text(
-              text,
-              style: const TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-            ),
+            Text(text, style: const TextStyle(color: Colors.grey, fontSize: 14)),
           ],
         ),
       ),

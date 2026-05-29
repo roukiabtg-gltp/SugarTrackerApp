@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'dashboard.dart'; 
-import 'patients.dart'; 
+import 'dashboard.dart';
+import 'patients.dart';
 import 'alerts.dart';
-import 'Appointment.dart'; // 🔥 استيراد صفحة المواعيد
-import 'administration_page.dart'; // 🔥 تأكدي من استيراد ملف صفحة الإدارة
+import 'Appointment.dart';
+import 'administration_page.dart';
+import 'notes.dart';
+import 'reports.dart';
+import '../desktop/auth/login_desktop.dart';
 
 class DoctorMainLayout extends StatefulWidget {
   const DoctorMainLayout({super.key});
@@ -18,13 +21,14 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
   int _selectedIndex = 0;
   final String? currentUserUid = FirebaseAuth.instance.currentUser?.uid;
 
-  // القائمة المحدثة بالصفحات
-  final List<Widget> _pages = [   
-    const ProfessionalDashboard(), 
-    const PatientsPage(),          
-    AppointmentsPage(),             // 🔥 صفحة المواعيد
-    const AlertsPage(),            
-    const AdministrationPage(),     // 🔥 صفحة الإدارة
+  final List<Widget> _pages = [
+    const ProfessionalDashboard(),
+    const PatientsPage(),
+    AppointmentsPage(),
+    const AlertsPage(),
+    const NotesPage(),
+    const ReportsPage(),
+    const AdministrationPage(),
   ];
 
   @override
@@ -32,57 +36,63 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     return Scaffold(
       body: Row(
         children: [
-          // القائمة الجانبية المخصصة (Sidebar)
+          // ── Sidebar ───────────────────────────────────────────────────
           Container(
-            width: 260, 
+            width: 260,
             color: Colors.white,
             child: Column(
               children: [
-                // اللوجو (MediCare)
                 Padding(
                   padding: const EdgeInsets.all(24.0),
                   child: Row(
                     children: [
                       Icon(Icons.monitor_heart, color: Colors.blue[600], size: 32),
                       const SizedBox(width: 12),
-                      const Text("MediCare", style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                      const Text('GlucoLink', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     ],
                   ),
                 ),
-                
+
                 const SizedBox(height: 20),
 
-                // عناصر القائمة
-                _buildMenuItem(0, Icons.grid_view_rounded, "Dashboard"),
-                _buildMenuItem(1, Icons.people_outline_rounded, "Patients"),
-                _buildMenuItem(2, Icons.calendar_today_outlined, "Appointments"),     // 🔥 زر المواعيد الجديد
-                _buildMenuItem(3, Icons.notifications_none_rounded, "Alerts"),
-                _buildMenuItem(4, Icons.admin_panel_settings_outlined, "Administration"), // 🔥 زر الإدارة
+                _buildMenuItem(0, Icons.grid_view_rounded,              'Dashboard'),
+                _buildMenuItem(1, Icons.people_outline_rounded,         'Patients'),
+                _buildMenuItem(2, Icons.calendar_today_outlined,        'Appointments'),
+                _buildMenuItem(3, Icons.notifications_none_rounded,     'Alerts'),
+                _buildMenuItem(4, Icons.notes_outlined,                 'Notes'),
+                _buildMenuItem(5, Icons.bar_chart_outlined,             'Reports'),
+                _buildMenuItem(6, Icons.admin_panel_settings_outlined,  'Administration'),
 
-                const Spacer(), 
+                const Spacer(),
 
-                // قسم معلومات الطبيب (مجلوبة من Firestore)
                 _buildDoctorProfile(),
 
-                // زر تسجيل الخروج
-                ListTile(
-                  leading: const Icon(Icons.logout, color: Colors.grey),
-                  title: const Text("Sign out", style: TextStyle(color: Colors.grey)),
-                  onTap: () async {
-                    await FirebaseAuth.instance.signOut();
-                    if (context.mounted) {
-                      Navigator.pushReplacementNamed(context, '/login'); 
-                    }
-                  },
+                // ── Logout button ─────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: ListTile(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    leading: const Icon(Icons.logout, color: Colors.redAccent),
+                    title: const Text('Sign out', style: TextStyle(color: Colors.redAccent)),
+                    onTap: () async {
+                      await FirebaseAuth.instance.signOut();
+                      if (mounted) {
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (_) => const LoginDesktop()),
+                          (_) => false,
+                        );
+                      }
+                    },
+                  ),
                 ),
                 const SizedBox(height: 20),
               ],
             ),
           ),
-          
+
           const VerticalDivider(thickness: 1, width: 1),
-          
-          // عرض الصفحة المختارة
+
           Expanded(
             child: Container(
               color: const Color(0xFFF8F9FE),
@@ -120,10 +130,9 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
       stream: FirebaseFirestore.instance.collection('users').doc(currentUserUid).snapshots(),
       builder: (context, snapshot) {
         if (!snapshot.hasData) return const SizedBox();
-        
         var data = snapshot.data!.data() as Map<String, dynamic>?;
-        String name = data?['name'] ?? "Doctor";
-        String specialty = data?['specialty'] ?? "Specialist";
+        String name      = data?['name']      ?? 'Doctor';
+        String specialty = data?['specialty'] ?? 'Specialist';
 
         return Padding(
           padding: const EdgeInsets.all(16.0),
@@ -131,14 +140,14 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
             children: [
               CircleAvatar(
                 backgroundColor: Colors.blue[100],
-                child: Text(name.isNotEmpty ? name[0].toUpperCase() : "D", style: const TextStyle(color: Colors.blue)),
+                child: Text(name.isNotEmpty ? name[0].toUpperCase() : 'D', style: const TextStyle(color: Colors.blue)),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, style: const TextStyle(fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis)),
+                    Text(name,      style: const TextStyle(fontWeight: FontWeight.bold, overflow: TextOverflow.ellipsis)),
                     Text(specialty, style: const TextStyle(color: Colors.grey, fontSize: 12)),
                   ],
                 ),
