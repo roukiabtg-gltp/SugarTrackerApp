@@ -58,17 +58,29 @@ class _WaitingListPageState extends State<WaitingListPage> {
               stream: () {
                 Query q = FirebaseFirestore.instance.collection('appointments');
                 if (doctorId != null) q = q.where('doctorId', isEqualTo: doctorId);
-                return q.orderBy('createdAt', descending: false).snapshots();
+                // 🛠️ التغيير هنا: قمنا بإزالة orderBy('createdAt') لتفادي اختفاء المريض إكرام بسبب نقص هذا الحقل في الفايرستور
+                return q.snapshots(); 
               }(),
               builder: (_, snap) {
                 if (snap.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)));
 
                 final allDocs = snap.data?.docs ?? [];
+                
+                // 1. تصفية مواعيد اليوم التي حالتها في الانتظار فقط
                 final todayDocs = allDocs.where((d) {
                   final data = d.data() as Map<String, dynamic>;
-                  return (data['date'] ?? '').toString().startsWith(today) &&
-                         (data['status'] != 'annule');
+                  final appointmentDate = (data['date'] ?? '').toString();
+                  final status = data['status']?.toString() ?? '';
+                  
+                  return appointmentDate.startsWith(today) && (status == 'en_attente' || status == 'en-attente');
                 }).toList();
+
+                // 2. 🛠️ التغيير هنا: ترتيب المواعيد برمجياً وتصاعدياً حسب الوقت (Heure) لكي تظهر القائمة من الصباح إلى المساء
+                todayDocs.sort((a, b) {
+                  final timeA = (a.data() as Map<String, dynamic>)['time']?.toString() ?? '00:00';
+                  final timeB = (b.data() as Map<String, dynamic>)['time']?.toString() ?? '00:00';
+                  return timeA.compareTo(timeB);
+                });
 
                 if (todayDocs.isEmpty) {
                   return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -78,14 +90,25 @@ class _WaitingListPageState extends State<WaitingListPage> {
                   ]));
                 }
 
+                // حساب العدادات بدقة بناءً على المواعيد الكلية لليوم
+                final totalTodayCount = allDocs.where((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  return (data['date'] ?? '').toString().startsWith(today) && data['status'] != 'annule';
+                }).length;
+
+                final confirmedCount = allDocs.where((d) {
+                  final data = d.data() as Map<String, dynamic>;
+                  return (data['date'] ?? '').toString().startsWith(today) && data['status'] == 'confirme';
+                }).length;
+
                 return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   // Summary chips
                   Row(children: [
-                    _chip('${todayDocs.length} total',   const Color(0xFF2563EB)),
+                    _chip('$totalTodayCount total',   const Color(0xFF2563EB)),
                     const SizedBox(width: 10),
-                    _chip('${todayDocs.where((d) => (d.data() as Map)['status'] == 'confirme').length} confirmés', const Color(0xFF10B981)),
+                    _chip('$confirmedCount confirmés', const Color(0xFF10B981)),
                     const SizedBox(width: 10),
-                    _chip('${todayDocs.where((d) {final s=(d.data() as Map)['status']??''; return s=='en_attente'||s=='en-attente';}).length} en attente', const Color(0xFFEA580C)),
+                    _chip('${todayDocs.length} en attente', const Color(0xFFEA580C)),
                   ]),
                   const SizedBox(height: 16),
                   Expanded(
@@ -123,13 +146,12 @@ class _WaitingListPageState extends State<WaitingListPage> {
                             ),
                             const SizedBox(width: 8),
                             // Actions
-                            if (status != 'confirme')
-                              IconButton(
-                                icon: const Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 22),
-                                tooltip: 'Confirmer',
-                                onPressed: () => _updateStatus(doc.id, 'confirme'),
-                                padding: EdgeInsets.zero, constraints: const BoxConstraints(),
-                              ),
+                            IconButton(
+                              icon: const Icon(Icons.check_circle_outline, color: Color(0xFF10B981), size: 22),
+                              tooltip: 'Confirmer',
+                              onPressed: () => _updateStatus(doc.id, 'confirme'),
+                              padding: EdgeInsets.zero, constraints: const BoxConstraints(),
+                            ),
                             const SizedBox(width: 6),
                             IconButton(
                               icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 22),

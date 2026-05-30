@@ -7,7 +7,7 @@ import 'package:intl/intl.dart';
 import 'Rendez-vous.dart';
 import 'Patients.dart';
 import 'Liste d\'Attente.dart';
-import 'Facture.dart';
+import 'facture.dart';
 import 'Certificat.dart';
 import '../desktop/auth/login_desktop.dart';
 
@@ -70,7 +70,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
             const AppointmentPage(),
             const WaitingListPage(),
             const PatientsPage(),
-            const FacturationPage(),
+            const FacturePage(),
             const CertificatsPage(),
           ]),
         ),
