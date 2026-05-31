@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart'; // ستحتاجينها لتنسيق التاريخ تلقائياً
+import 'package:intl/intl.dart'; 
 import 'package:firebase_auth/firebase_auth.dart';
+// استدعاء ملف صفحة التعديل الجديدة
+import 'edit_appointment_page.dart'; 
 
 class AppointmentPage extends StatefulWidget {
   const AppointmentPage({super.key});
@@ -11,44 +13,46 @@ class AppointmentPage extends StatefulWidget {
 }
 
 class _AppointmentPageState extends State<AppointmentPage> {
-  String? doctorUid; // متغير لحفظ ID الطبيب
+  String? doctorIdFromServer; // المتغير المعتمد الوحيد الذي سيحمل المعرف الصحيح للطبيب
+  bool isLoading = true; 
 
   @override
   void initState() {
     super.initState();
-    _fetchDoctorId(); // استدعاء الدالة عند التشغيل
+    getDoctorIdOfThisSecretary(); // جلب معرف الطبيب المرتبط بحساب السكرتيرة فور تشغيل الصفحة
   }
 
-  Future<void> _fetchDoctorId() async {
-    // 1. الحصول على UID السكرتيرة الحالية (نورين)
+  Future<void> getDoctorIdOfThisSecretary() async {
     final currentUser = FirebaseAuth.instance.currentUser;
-    
     if (currentUser != null) {
-      // 2. جلب وثيقتها من مجموعة users كما في (image_f4c0dc.png)
-      DocumentSnapshot doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(currentUser.uid)
-          .get();
+      try {
+        DocumentSnapshot secretaryDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(currentUser.uid)
+            .get();
 
-      setState(() {
-        // 3. تخزين doctorId لاستخدامه في عرض المواعيد
-        doctorUid = doc['doctorId']; 
-      });
+        if (secretaryDoc.exists && secretaryDoc.data() != null) {
+          var data = secretaryDoc.data() as Map<String, dynamic>;
+          setState(() {
+            // جلب الـ doctorId الصحيح للطبيب المرتبط بحساب السكرتيرة
+            doctorIdFromServer = data['doctorId']; 
+            isLoading = false; 
+          });
+          debugPrint("=== SUCCESS: تم جلب معرف الطبيب الصحيح: $doctorIdFromServer ===");
+        } else {
+          setState(() {
+            isLoading = false;
+          });
+        }
+      } catch (e) {
+        debugPrint("❌ حدث خطأ أثناء جلب معطيات السكرتيرة: $e");
+        setState(() {
+          isLoading = false;
+        });
+      }
     }
   }
 
-  // دالة إضافة موعد جديد
-  void createNewAppointment(String patientName) {
-    FirebaseFirestore.instance.collection('appointments').add({
-      'patientName': patientName,
-      'doctorId': doctorUid, // الربط المباشر مع الطبيب
-      'status': 'en_attente',
-      'timestamp': FieldValue.serverTimestamp(),
-      'date': DateTime.now().toString().split(' ')[0], // تاريخ اليوم
-    });
-  }
-
-  // --- دالة لإظهار نافذة إضافة موعد جديد ---
   void _showAddAppointmentDialog(BuildContext context) {
     final nameController = TextEditingController();
     final dateController = TextEditingController();
@@ -73,8 +77,8 @@ class _AppointmentPageState extends State<AppointmentPage> {
                 TextField(
                   controller: dateController,
                   decoration: const InputDecoration(labelText: "Date (yyyy-MM-dd)", prefixIcon: Icon(Icons.calendar_today)),
+                  readOnly: true, 
                   onTap: () async {
-                    // اختيار التاريخ من تقويم النظام
                     DateTime? pickedDate = await showDatePicker(
                       context: context,
                       initialDate: DateTime.now(),
@@ -109,17 +113,28 @@ class _AppointmentPageState extends State<AppointmentPage> {
               style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2563EB)),
               onPressed: () async {
                 if (nameController.text.isNotEmpty && dateController.text.isNotEmpty) {
-                  // إرسال البيانات إلى Firebase
+                  
+                  // فحص أمان للتأكد من أن كود الطبيب تم جلبه وليس فارغاً قبل الحفظ
+                  if (doctorIdFromServer == null || doctorIdFromServer!.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Erreur: ID du médecin introuvable.")),
+                    );
+                    return;
+                  }
+
                   await FirebaseFirestore.instance.collection('appointments').add({
-                    'patientName': nameController.text,
-                    'date': dateController.text,
-                    'time': timeController.text,
+                    'patientName': nameController.text.trim(),
+                    'date': dateController.text.trim(),
+                    'time': timeController.text.trim(),
                     'type': selectedType,
-                    'doctorId': doctorUid, // إضافة doctorId
-                    'status': 'confirme',
+                    
+                    // تم التثبيت الحاسم هنا: إرسال معرف الطبيب الصحيح المستخرج لقاعدة البيانات
+                    'doctorId': doctorIdFromServer, 
+                    
+                    'status': 'en_attente', 
                     'createdAt': FieldValue.serverTimestamp(),
                   });
-                  Navigator.pop(context); // غلق النافذة بعد الحفظ
+                  Navigator.pop(context); 
                 }
               },
               child: const Text("Enregistrer", style: TextStyle(color: Colors.white)),
@@ -132,6 +147,10 @@ class _AppointmentPageState extends State<AppointmentPage> {
 
   @override
   Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Container(
       padding: const EdgeInsets.all(40),
       color: const Color(0xFFF8F9FB),
@@ -148,7 +167,6 @@ class _AppointmentPageState extends State<AppointmentPage> {
                   Text("Tous les rendez-vous", style: TextStyle(color: Colors.grey, fontSize: 16)),
                 ],
               ),
-              // --- الزر المعدل ليفتح الـ Popup ---
               ElevatedButton.icon(
                 onPressed: () => _showAddAppointmentDialog(context),
                 icon: const Icon(Icons.add, color: Colors.white),
@@ -170,43 +188,47 @@ class _AppointmentPageState extends State<AppointmentPage> {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance.collection('appointments').orderBy('createdAt', descending: true).snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Aucun rendez-vous trouvé."));
+              child: doctorIdFromServer == null
+                  ? const Center(child: Text("Erreur de configuration du médecin."))
+                  : StreamBuilder<QuerySnapshot>(
+                      stream: FirebaseFirestore.instance
+                          .collection('appointments')
+                          .where('doctorId', isEqualTo: doctorIdFromServer) // فلترة العرض بالمعرف الصحيح أيضاً ومزامنته
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState == ConnectionState.waiting) return const Center(child: CircularProgressIndicator());
+                        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) return const Center(child: Text("Aucun rendez-vous trouvé."));
 
-                  var docs = snapshot.data!.docs;
-                  return SingleChildScrollView(
-                    child: DataTable(
-                      horizontalMargin: 30,
-                      columnSpacing: 40,
-                      headingRowHeight: 60,
-                      dataRowMaxHeight: 80,
-                      columns: const [
-                        DataColumn(label: Text('Patient', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                        DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                        DataColumn(label: Text('Heure', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                        DataColumn(label: Text('Type', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                        DataColumn(label: Text('Statut', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                        DataColumn(label: Text('Action', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
-                      ],
-                      rows: docs.map((doc) {
-                        var data = doc.data() as Map<String, dynamic>;
-                        Color statusColor = data['status'] == 'confirme' ? Colors.green : Colors.orange;
-                        return _buildDataRow(
-                          data['patientName'] ?? 'Inconnu',
-                          data['date'] ?? '-',
-                          data['time'] ?? '-',
-                          data['type'] ?? '-',
-                          data['status'] ?? 'en-attente',
-                          statusColor,
+                        var docs = snapshot.data!.docs;
+                        return SingleChildScrollView(
+                          child: DataTable(
+                            horizontalMargin: 30,
+                            columnSpacing: 40,
+                            headingRowHeight: 60,
+                            dataRowMaxHeight: 80,
+                            columns: const [
+                              DataColumn(label: Text('Patient', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                              DataColumn(label: Text('Date', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                              DataColumn(label: Text('Heure', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                              DataColumn(label: Text('Type', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                              DataColumn(label: Text('Statut', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                              DataColumn(label: Text('Action', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey))),
+                            ],
+                            rows: docs.map((doc) {
+                              var data = doc.data() as Map<String, dynamic>;
+                              String appointmentId = doc.id; 
+                              
+                              Color statusColor = Colors.orange;
+                              if (data['status'] == 'confirme') statusColor = Colors.green;
+                              if (data['status'] == 'Annulé') statusColor = Colors.red;
+                              if (data['status'] == 'Terminé') statusColor = Colors.blue;
+
+                              return _buildDataRow(context, appointmentId, data, statusColor);
+                            }).toList(),
+                          ),
                         );
-                      }).toList(),
+                      },
                     ),
-                  );
-                },
-              ),
             ),
           ),
         ],
@@ -214,21 +236,33 @@ class _AppointmentPageState extends State<AppointmentPage> {
     );
   }
 
-  DataRow _buildDataRow(String name, String date, String time, String type, String status, Color statusColor) {
+  DataRow _buildDataRow(BuildContext context, String id, Map<String, dynamic> data, Color statusColor) {
     return DataRow(
       cells: [
-        DataCell(Text(name, style: const TextStyle(fontWeight: FontWeight.w600))),
-        DataCell(Text(date)),
-        DataCell(Text(time)),
-        DataCell(Text(type)),
+        DataCell(Text(data['patientName'] ?? 'Inconnu', style: const TextStyle(fontWeight: FontWeight.w600))),
+        DataCell(Text(data['date'] ?? '-')),
+        DataCell(Text(data['time'] ?? '-')),
+        DataCell(Text(data['type'] ?? '-')),
         DataCell(
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(20)),
-            child: Text(status, style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13)),
+            child: Text(data['status'] ?? 'en_attente', style: TextStyle(color: statusColor, fontWeight: FontWeight.bold, fontSize: 13)),
           ),
         ),
-        DataCell(IconButton(icon: const Icon(Icons.edit_note, color: Color(0xFF2563EB)), onPressed: () {})),
+        DataCell(
+          IconButton(
+            icon: const Icon(Icons.edit_note, color: Color(0xFF2563EB)), 
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EditAppointmentPage(appointmentId: id, appointmentData: data),
+                ),
+              );
+            },
+          ),
+        ),
       ],
     );
   }
