@@ -4,29 +4,32 @@ import 'firebase_options.dart';
 import 'desktop/auth/login_desktop.dart';
 import 'package:firedart/firedart.dart';
 import 'package:flutter/foundation.dart';
-
-// 1. إضافة استيراد مكتبة التواريخ واللغات هنا
 import 'package:intl/date_symbol_data_local.dart';
+
+// ── Localizations delegates ─────────────────────────────
+import 'package:flutter_localizations/flutter_localizations.dart';
+
+// ── نظام الإعدادات ──────────────────────────────────────
+import 'doctor_settings_notifier.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. تهيئة اللغات (الفرنسية، العربية، والإنجليزية) قبل إقلاع أي واجهة
   try {
     await initializeDateFormatting('fr_FR', null);
     await initializeDateFormatting('ar', null);
     await initializeDateFormatting('en_US', null);
   } catch (e) {
-    print("إشعار تهيئة اللغات: $e");
+    debugPrint("تهيئة اللغات: $e");
   }
 
-  // إعدادات Firebase والمنصات الخاصة بكِ كما هي
+  // تحميل إعدادات الطبيب المحفوظة (theme/lang/font)
+  await loadDoctorSettings();
+
   if (kIsWeb || defaultTargetPlatform == TargetPlatform.android) {
-    // الطريقة العادية للأندرويد والويب
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   } else {
-    // الطريقة السهلة للويندوز
-    Firestore.initialize("your-project-id"); // حطي الـ Project ID تاعك هنا
+    Firestore.initialize("your-project-id");
   }
 
   runApp(const MyApp());
@@ -37,14 +40,61 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'GlucoLink',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF1A237E)),
-        useMaterial3: true,
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: doctorThemeMode,
+      builder: (_, themeMode, __) =>
+        ValueListenableBuilder<Locale>(
+          valueListenable: doctorLocale,
+          builder: (_, locale, __) =>
+            ValueListenableBuilder<double>(
+              valueListenable: doctorFontScale,
+              builder: (_, scale, __) => MaterialApp(
+                title: 'GlucoLink',
+                debugShowCheckedModeBanner: false,
+
+                // ── Localizations (يحل مشكلة TabBar/TextField) ──
+                localizationsDelegates: const [
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                ],
+                supportedLocales: const [
+                  Locale('en'),
+                  Locale('fr'),
+                  Locale('ar'),
+                ],
+                locale: locale,
+
+                // ── Theme ───────────────────────────────────────
+                themeMode: themeMode,
+                theme:     _buildTheme(Brightness.light, scale),
+                darkTheme: _buildTheme(Brightness.dark,  scale),
+
+                home: const LoginDesktop(),
+              ),
+            ),
+        ),
+    );
+  }
+
+  ThemeData _buildTheme(Brightness brightness, double scale) {
+    final base = ThemeData(
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: const Color(0xFF1882FF),
+        brightness: brightness,
       ),
-      home: const LoginDesktop(), 
+      scaffoldBackgroundColor: brightness == Brightness.dark
+          ? const Color(0xFF0F1117)
+          : const Color(0xFFF8F9FE),
+      cardColor: brightness == Brightness.dark
+          ? const Color(0xFF1E2130)
+          : Colors.white,
+      useMaterial3: true,
+    );
+
+    return base.copyWith(
+      textTheme: base.textTheme.apply(fontSizeFactor: scale),
+      primaryTextTheme: base.primaryTextTheme.apply(fontSizeFactor: scale),
     );
   }
 }
