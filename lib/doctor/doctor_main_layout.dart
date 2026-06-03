@@ -11,6 +11,7 @@ import 'reports.dart';
 import 'settings_page.dart';                   // ← جديد
 import '../desktop/auth/login_desktop.dart';
 import '../doctor_settings_notifier.dart';      // ← جديد
+import 'doctor_profile_page.dart';             // ← جديد
 
 class DoctorMainLayout extends StatefulWidget {
   const DoctorMainLayout({super.key});
@@ -31,6 +32,7 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     const ReportsPage(),
     const AdministrationPage(),
     const SettingsPage(),               // ← index 7
+    const DoctorProfilePage(),          // ← index 8
   ];
 
   // ── ترجمة بسيطة بدون package ─────────────────────────────
@@ -200,13 +202,16 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
         }
         return Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: Container(
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedIndex = 8), // ← index 8 = Profile
+            child: Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: isDark
                   ? Colors.white.withOpacity(0.05)
                   : Colors.blue.shade50,
               borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFF1882FF).withOpacity(0.15)),
             ),
             child: Row(children: [
               CircleAvatar(
@@ -234,6 +239,7 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
               )),
             ]),
           ),
+          ),  // GestureDetector
         );
       },
     );

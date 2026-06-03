@@ -33,6 +33,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   shared_preferences: ^2.3.2
+  file_picker: ^8.1.2
   
   # استخدمي كلمة any أو نسخ حديثة متوافقة
   firebase_core: ^3.10.0
