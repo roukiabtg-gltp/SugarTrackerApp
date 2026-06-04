@@ -90,7 +90,8 @@ class _LoginDesktopState extends State<LoginDesktop> {
         }
       }
     } catch (e) {
-      _showError("خطأ في الإيميل أو كلمة المرور");
+       print("LOGIN PAGE ERROR: $e");
+       _showError(e.toString());
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

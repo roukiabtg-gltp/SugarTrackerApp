@@ -8,7 +8,6 @@ import 'Rendez-vous.dart';
 import 'Patients.dart';
 import 'Liste d\'Attente.dart';
 import 'facture.dart';
-import 'Certificat.dart';
 import '../desktop/auth/login_desktop.dart';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -50,7 +49,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
     {'icon': Icons.access_time_outlined,   'label': "Liste d'Attente"},
     {'icon': Icons.people_outline,         'label': 'Patients'},
     {'icon': Icons.receipt_long_outlined,  'label': 'Facturation'},
-    {'icon': Icons.description_outlined,   'label': 'Certificats'},
+    
   ];
 
   @override
@@ -71,7 +70,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
             const WaitingListPage(),
             const PatientsPage(),
             const FacturePage(),
-            const CertificatsPage(),
+            
           ]),
         ),
       ]),
