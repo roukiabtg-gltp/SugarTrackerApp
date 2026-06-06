@@ -47,3 +47,10 @@ Future<void> setDoctorFontScale(double scale) async {
   final prefs = await SharedPreferences.getInstance();
   await prefs.setDouble(_kFont, scale);
 }
+
+String t(String en, String ar, String fr) {
+  final lang = doctorLocale.value.languageCode;
+  if (lang == 'ar') return ar;
+  if (lang == 'fr') return fr;
+  return en;
+}

@@ -1,1089 +1,644 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:cloud_firestore/cloud_firestore.dart' as fst;
 import 'package:intl/intl.dart';
-import 'patient_profile_page.dart';
-import '../models/user_model.dart';
-
-// ─────────────────────────────────────────────
-//  ALERTS PAGE  –  GlucoLink Doctor
-//  مصادر البيانات:
-//    • Firestore / measurements  ← قياسات critical من تطبيق المريض
-//    • Realtime DB / sos/{patientId}/{sosId}  ← حالات SOS
-// ─────────────────────────────────────────────
 
 class AlertsPage extends StatefulWidget {
-  const AlertsPage({super.key});
+  final String doctorId;
+  const AlertsPage({super.key, required this.doctorId});
+
   @override
   State<AlertsPage> createState() => _AlertsPageState();
 }
 
 class _AlertsPageState extends State<AlertsPage>
     with SingleTickerProviderStateMixin {
-  final _db  = FirebaseDatabase.instance.ref();
-  final _fst = fst.FirebaseFirestore.instance;
-
-  late final TabController _tabs;
-
-  // ─── فلاتر ───
-  String _filterType   = "All";   // All | critical | sos
-  String _filterStatus = "All";   // All | unresolved | resolved
-
-  // ─── ثوابت اللون ───
-  static const _red    = Color(0xFFE53935);
-  static const _orange = Color(0xFFFF6D00);
-  static const _blue   = Color(0xFF1882FF);
-  static const _bg     = Color(0xFFF5F7FB);
-  static const _card   = Colors.white;
+  late TabController _tabController;
+  String _filter = 'all'; // all / unresolved / resolved
 
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 2, vsync: this);
   }
 
   @override
   void dispose() {
-    _tabs.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
-  // ─────────────────────────────────────────────
-  //  أدوات مساعدة
-  // ─────────────────────────────────────────────
-  String _ago(dynamic raw) {
-    if (raw == null) return "--";
-    try {
-      int? ms = raw is int ? raw : int.tryParse(raw.toString());
-      DateTime dt = ms != null
-          ? DateTime.fromMillisecondsSinceEpoch(
-              ms > 9999999999 ? ms : ms * 1000)
-          : DateTime.parse(raw.toString());
-      Duration d = DateTime.now().difference(dt);
-      if (d.inSeconds < 60)  return "Just now";
-      if (d.inMinutes < 60)  return "${d.inMinutes}m ago";
-      if (d.inHours   < 24)  return "${d.inHours}h ago";
-      return "${d.inDays}d ago";
-    } catch (_) { return "--"; }
+  // ─── helpers ──────────────────────────────────────────────────────────────
+
+  Color _borderColor(String type) {
+    if (type == 'CRITICAL') return Colors.red;
+    if (type == 'SOS') return Colors.red;
+    return Colors.orange;
   }
 
-  String _fmtTime(dynamic raw) {
-    if (raw == null) return "--";
-    try {
-      int? ms = raw is int ? raw : int.tryParse(raw.toString());
-      DateTime dt = ms != null
-          ? DateTime.fromMillisecondsSinceEpoch(
-              ms > 9999999999 ? ms : ms * 1000)
-          : DateTime.parse(raw.toString());
-      return DateFormat("dd MMM · HH:mm").format(dt);
-    } catch (_) { return "--"; }
+  Color _iconColor(String type) {
+    if (type == 'CRITICAL') return Colors.red;
+    if (type == 'SOS') return Colors.red;
+    return Colors.orange;
   }
 
-  double _glucoseVal(dynamic v) =>
-      double.tryParse(v?.toString() ?? "") ?? 0.0;
+  IconData _iconData(String type) {
+    if (type == 'SOS') return Icons.sos_rounded;
+    return Icons.warning_amber_rounded;
+  }
 
-  String _glucoseStatus(double v) {
-    // القياس بـ g/L → 0.7–1.8 طبيعي
-    // القياس بـ mg/dL → 70–180 طبيعي
-    if (v < 10) {
-      // على الأرجح g/L
-      if (v < 0.7 || v > 1.8) return "critical";
-      return "normal";
-    } else {
-      // على الأرجح mg/dL
-      if (v < 70 || v > 180) return "critical";
-      return "normal";
+  // ─── mark resolved ────────────────────────────────────────────────────────
+
+  void _resolve(String patientId, Map data) {
+    FirebaseDatabase.instance
+        .ref("doctors/${widget.doctorId}/alerts/$patientId/status")
+        .set("resolved");
+  }
+
+  void _dismiss(String patientId) {
+    FirebaseDatabase.instance
+        .ref("doctors/${widget.doctorId}/alerts/$patientId")
+        .remove();
+  }
+
+  void _markAllRead(List<MapEntry> entries) {
+    for (var e in entries) {
+      FirebaseDatabase.instance
+          .ref("doctors/${widget.doctorId}/alerts/${e.key}/isRead")
+          .set(true);
     }
   }
 
-  String _glucoseLabel(double v) {
-    if (v < 10) return "${v.toStringAsFixed(2)} g/L";
-    return "${v.toStringAsFixed(0)} mg/dL";
-  }
+  // ─── build ────────────────────────────────────────────────────────────────
 
-  String _thresholdLabel(double v) {
-    if (v < 10) {
-      if (v < 0.7) return "Below 0.7 g/L";
-      return "Above 1.8 g/L";
-    } else {
-      if (v < 70) return "Below 70 mg/dL";
-      return "Above 180 mg/dL";
-    }
-  }
-
-  void _navigateToPatient(String patientId, String patientName) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => PatientProfilePage(
-          patientId: patientId,
-          patientName: patientName,
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────
-  //  حل التنبيه في Firestore
-  // ─────────────────────────────────────────────
-  Future<void> _resolveFirestoreAlert(String docId) async {
-    await _fst.collection('measurements').doc(docId).update({
-      'resolved': true,
-      'resolvedAt': fst.FieldValue.serverTimestamp(),
-    });
-  }
-
-  // ─────────────────────────────────────────────
-  //  حل SOS في Realtime DB
-  // ─────────────────────────────────────────────
-  Future<void> _resolveSos(String patientId, String sosId) async {
-    await _db.child('sos/$patientId/$sosId').update({
-      'resolved': true,
-      'resolvedAt': ServerValue.timestamp,
-    });
-  }
-
-  // ─────────────────────────────────────────────
-  //  BUILD
-  // ─────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: _bg,
-      body: Column(
-        children: [
-          _buildHeader(),
-          _buildStatsRow(),
-          _buildFilterBar(),
-          Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: [
-                _buildCriticalMeasurementsTab(),
-                _buildSosTab(),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      backgroundColor: const Color(0xFFF3F4F6),
+      body: StreamBuilder<DatabaseEvent>(
+        stream: FirebaseDatabase.instance
+            .ref("doctors/${widget.doctorId}/alerts")
+            .onValue,
+        builder: (context, snap) {
+          // ── loading ──
+          if (snap.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-  // ─────────────────────────────────────────────
-  //  HEADER
-  // ─────────────────────────────────────────────
-  Widget _buildHeader() {
-    return Container(
-      color: _card,
-      padding: const EdgeInsets.fromLTRB(28, 24, 20, 16),
-      child: Row(
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text("Alerts",
-                  style: TextStyle(
-                      fontSize: 26,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFF0D1117))),
-              const SizedBox(height: 2),
-              Text("Real-time patient monitoring",
-                  style: TextStyle(
-                      fontSize: 13, color: Colors.grey.shade500)),
-            ],
-          ),
-          const Spacer(),
-          // ─ Badge الإشعارات ─
-          StreamBuilder<fst.QuerySnapshot>(
-            stream: _fst
-                .collection('measurements')
-                .where('status', isEqualTo: 'critical')
-                .where('resolved', isEqualTo: false)
-                .snapshots(),
-            builder: (_, snap) {
-              int cnt = snap.data?.docs.length ?? 0;
-              return _bellBadge(cnt);
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _bellBadge(int count) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        Container(
-          width: 42,
-          height: 42,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF0F4FF),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: const Icon(Icons.notifications_none_rounded,
-              color: _blue, size: 22),
-        ),
-        if (count > 0)
-          Positioned(
-            right: -4,
-            top: -4,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-              decoration: BoxDecoration(
-                  color: _red,
-                  borderRadius: BorderRadius.circular(10)),
-              child: Text("$count",
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-            ),
-          ),
-      ],
-    );
-  }
-
-  // ─────────────────────────────────────────────
-  //  STATS ROW  –  3 بطاقات
-  // ─────────────────────────────────────────────
-  Widget _buildStatsRow() {
-    return Container(
-      color: _card,
-      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-      child: Row(
-        children: [
-          // Critical Measurements
-          Expanded(
-            child: StreamBuilder<fst.QuerySnapshot>(
-              stream: _fst
-                  .collection('measurements')
-                  .where('status', isEqualTo: 'critical')
-                  .where('resolved', isEqualTo: false)
-                  .snapshots(),
-              builder: (_, snap) => _statCard(
-                "Critical",
-                snap.data?.docs.length ?? 0,
-                Icons.warning_amber_rounded,
-                _red,
-                const Color(0xFFFFF0F0),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          // SOS Alerts
-          Expanded(
-            child: StreamBuilder<DatabaseEvent>(
-              stream: _db.child('sos').onValue,
-              builder: (_, snap) {
-                int total = 0;
-                if (snap.hasData && snap.data!.snapshot.value != null) {
-                  Map sos = snap.data!.snapshot.value as Map;
-                  for (var patient in sos.values) {
-                    if (patient is Map) {
-                      for (var s in patient.values) {
-                        if (s is Map && s['resolved'] != true) total++;
-                      }
-                    }
-                  }
-                }
-                return _statCard(
-                  "SOS Alerts",
-                  total,
-                  Icons.sos_rounded,
-                  _orange,
-                  const Color(0xFFFFF5EC),
-                );
-              },
-            ),
-          ),
-          const SizedBox(width: 12),
-          // Total Patients
-          Expanded(
-            child: StreamBuilder<fst.QuerySnapshot>(
-              stream: _fst.collection('users')
-                  .where('role', isEqualTo: 'patient')
-                  .snapshots(),
-              builder: (_, snap) => _statCard(
-                "Monitored",
-                snap.data?.docs.length ?? 0,
-                Icons.people_outline_rounded,
-                _blue,
-                const Color(0xFFEEF4FF),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _statCard(
-      String label, int value, IconData icon, Color col, Color bg) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, color: col, size: 22),
-          const SizedBox(height: 10),
-          Text("$value",
-              style: TextStyle(
-                  fontSize: 26,
-                  fontWeight: FontWeight.w800,
-                  color: col)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12, color: Colors.grey.shade600)),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────
-  //  FILTER BAR  +  TABS
-  // ─────────────────────────────────────────────
-  Widget _buildFilterBar() {
-    return Container(
-      color: _card,
-      child: Column(
-        children: [
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F5)),
-          TabBar(
-            controller: _tabs,
-            labelColor: _blue,
-            unselectedLabelColor: Colors.grey.shade500,
-            indicatorColor: _blue,
-            indicatorWeight: 2.5,
-            labelStyle: const TextStyle(
-                fontWeight: FontWeight.w600, fontSize: 13.5),
-            tabs: const [
-              Tab(text: "⚠️  Critical Measurements"),
-              Tab(text: "🆘  SOS Calls"),
-            ],
-          ),
-          const Divider(height: 1, thickness: 1, color: Color(0xFFF0F2F5)),
-          // ─ فلتر Resolved / Unresolved ─
-          Padding(
-            padding: const EdgeInsets.symmetric(
-                horizontal: 20, vertical: 10),
-            child: Row(
-              children: [
-                Text("Show:",
-                    style: TextStyle(
-                        color: Colors.grey.shade500, fontSize: 13)),
-                const SizedBox(width: 10),
-                ...[
-                  "All",
-                  "Unresolved",
-                  "Resolved",
-                ].map((s) => Padding(
-                      padding: const EdgeInsets.only(right: 6),
-                      child: _filterChip(s, _filterStatus, (v) {
-                        setState(() => _filterStatus = v);
-                      }),
-                    )),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _filterChip(
-      String label, String selected, ValueChanged<String> onTap) {
-    final bool active = selected == label;
-    return GestureDetector(
-      onTap: () => onTap(label),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-        decoration: BoxDecoration(
-          color: active ? _blue : const Color(0xFFF0F4FF),
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                color: active ? Colors.white : Colors.grey.shade600,
-                fontSize: 12.5,
-                fontWeight:
-                    active ? FontWeight.w600 : FontWeight.normal)),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────
-  //  TAB 1 : Critical Measurements  (Firestore)
-  // ─────────────────────────────────────────────
-  Widget _buildCriticalMeasurementsTab() {
-    fst.Query<Map<String, dynamic>> query = _fst
-        .collection('measurements')
-        .where('status', isEqualTo: 'critical')
-        .orderBy('timestamp', descending: true);
-
-    return StreamBuilder<fst.QuerySnapshot>(
-      stream: query.snapshots(),
-      builder: (_, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (!snap.hasData || snap.data!.docs.isEmpty) {
-          return _emptyState(
-            Icons.check_circle_outline_rounded,
-            Colors.green,
-            "No critical alerts",
-            "All patient readings are within normal range",
-          );
-        }
-
-        List<fst.QueryDocumentSnapshot> docs = snap.data!.docs;
-
-        // ─ تطبيق فلتر Resolved ─
-        if (_filterStatus == "Unresolved") {
-          docs = docs
-              .where((d) =>
-                  (d.data() as Map)['resolved'] != true)
-              .toList();
-        } else if (_filterStatus == "Resolved") {
-          docs = docs
-              .where((d) =>
-                  (d.data() as Map)['resolved'] == true)
-              .toList();
-        }
-
-        if (docs.isEmpty) {
-          return _emptyState(
-            Icons.filter_list_off_rounded,
-            Colors.grey,
-            "No alerts match this filter",
-            "Try changing the filter above",
-          );
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.all(20),
-          itemCount: docs.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (_, i) {
-            final data = docs[i].data() as Map<String, dynamic>;
-            final bool resolved = data['resolved'] == true;
-            final double val = _glucoseVal(data['value']);
-            final String pid   = data['patientId'] ?? "";
-            final String pname = data['patientName'] ?? "Patient";
-
-            return _measurementAlertCard(
-              docId:      docs[i].id,
-              patientId:  pid,
-              patientName: pname,
-              value:      val,
-              category:   data['category'] ?? "Glucose",
-              unit:       data['unit'] ?? "g/L",
-              timestamp:  data['timestamp'],
-              resolved:   resolved,
+          // ── parse data ──
+          Map<String, dynamic> allAlerts = {};
+          if (snap.hasData && snap.data!.snapshot.value != null) {
+            allAlerts = Map<String, dynamic>.from(
+              snap.data!.snapshot.value as Map,
             );
-          },
-        );
-      },
-    );
-  }
+          }
 
-  Widget _measurementAlertCard({
-    required String docId,
-    required String patientId,
-    required String patientName,
-    required double value,
-    required String category,
-    required String unit,
-    required dynamic timestamp,
-    required bool resolved,
-  }) {
-    final bool isHigh   = value >= (unit == "g/L" ? 1.8 : 180);
-    final Color accent  = resolved ? Colors.grey : _red;
-    final Color bgColor = resolved
-        ? const Color(0xFFF8F9FA)
-        : const Color(0xFFFFF8F8);
+          final entries = allAlerts.entries.toList()
+            ..sort((a, b) {
+              int ta = (a.value['timestamp'] ?? 0) as int;
+              int tb = (b.value['timestamp'] ?? 0) as int;
+              return tb.compareTo(ta);
+            });
 
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: resolved
-              ? const Color(0xFFE5E7EB)
-              : _red.withOpacity(0.25),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          // ─ Header Row ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          // ── counts ──
+          int cntCritical = entries
+              .where((e) =>
+                  e.value['type'] == 'CRITICAL' &&
+                  e.value['status'] != 'resolved')
+              .length;
+          int cntSos = entries
+              .where((e) =>
+                  e.value['type'] == 'SOS' &&
+                  e.value['status'] != 'resolved')
+              .length;
+          int cntMonitored =
+              entries.map((e) => e.key).toSet().length;
+
+          // ── filter helper ──
+          List<MapEntry<String, dynamic>> filtered(String tab) {
+            return entries.where((e) {
+              bool tabMatch = tab == 'critical'
+                  ? e.value['type'] != 'SOS'
+                  : e.value['type'] == 'SOS';
+              bool filterMatch = _filter == 'all'
+                  ? true
+                  : _filter == 'resolved'
+                      ? e.value['status'] == 'resolved'
+                      : e.value['status'] != 'resolved';
+              return tabMatch && filterMatch;
+            }).toList();
+          }
+
+          return SafeArea(
+            child: Column(
               children: [
-                // أيقونة الحالة
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: accent.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    resolved
-                        ? Icons.check_circle_rounded
-                        : (isHigh
-                            ? Icons.arrow_circle_up_rounded
-                            : Icons.arrow_circle_down_rounded),
-                    color: accent,
-                    size: 24,
+                // ── header ──────────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              "Alerts",
+                              style: TextStyle(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            Text(
+                              "Real-time patient monitoring",
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _BellButton(hasUnread: entries
+                          .any((e) => e.value['isRead'] == false)),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 14),
-                // معلومات المريض
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+
+                // ── stat cards ──────────────────────────────────
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(patientName,
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF0D1117))),
-                          ),
-                          const SizedBox(width: 8),
-                          _typeBadge(
-                              resolved ? "resolved" : "critical",
-                              resolved ? Colors.grey : _red),
-                          const SizedBox(width: 8),
-                          _typeBadge(
-                              isHigh ? "HIGH" : "LOW",
-                              isHigh ? _orange : _blue),
-                        ],
+                      _StatCard(
+                        icon: Icons.warning_amber_rounded,
+                        iconBg: const Color(0xFFFCEBEB),
+                        iconColor: const Color(0xFFA32D2D),
+                        value: cntCritical,
+                        label: "Critical",
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        "$category • ${_fmtTime(timestamp != null ? (timestamp is fst.Timestamp ? timestamp.millisecondsSinceEpoch : timestamp) : null)}",
-                        style: TextStyle(
-                            color: Colors.grey.shade500,
-                            fontSize: 12),
+                      const SizedBox(width: 10),
+                      _StatCard(
+                        icon: Icons.sos_rounded,
+                        iconBg: const Color(0xFFFAEEDA),
+                        iconColor: const Color(0xFF854F0B),
+                        value: cntSos,
+                        label: "SOS Alerts",
+                      ),
+                      const SizedBox(width: 10),
+                      _StatCard(
+                        icon: Icons.people_outline_rounded,
+                        iconBg: const Color(0xFFE6F1FB),
+                        iconColor: const Color(0xFF185FA5),
+                        value: cntMonitored,
+                        label: "Monitored",
                       ),
                     ],
                   ),
                 ),
-                // وقت منذ
-                Text(
-                  _ago(timestamp is fst.Timestamp
-                      ? timestamp.millisecondsSinceEpoch
-                      : timestamp),
-                  style: TextStyle(
-                      color: Colors.grey.shade400, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
 
-          // ─ Value Row ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-            child: Row(
-              children: [
-                _valueBox("Measured",
-                    "${value.toStringAsFixed(unit == 'g/L' ? 2 : 0)} $unit",
-                    accent),
-                const SizedBox(width: 10),
-                _valueBox(
-                  "Threshold",
-                  isHigh
-                      ? "Above ${unit == 'g/L' ? '1.8' : '180'} $unit"
-                      : "Below ${unit == 'g/L' ? '0.7' : '70'} $unit",
-                  Colors.grey.shade600,
-                ),
-                const Spacer(),
-                // ─ Progress Bar (نسبة الخطر) ─
-                SizedBox(
-                  width: 80,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text("Risk",
-                          style: TextStyle(
-                              fontSize: 10,
-                              color: Colors.grey.shade400)),
-                      const SizedBox(height: 4),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: LinearProgressIndicator(
-                          value: _riskLevel(value, unit),
-                          backgroundColor: Colors.grey.shade100,
-                          color: accent,
-                          minHeight: 6,
+                // ── tabs ─────────────────────────────────────────
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: TabBar(
+                    controller: _tabController,
+                    indicator: BoxDecoration(
+                      color: const Color(0xFFF3F4F6),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    indicatorPadding: const EdgeInsets.all(4),
+                    labelColor: Colors.black87,
+                    unselectedLabelColor: Colors.grey,
+                    labelStyle: const TextStyle(
+                        fontSize: 13, fontWeight: FontWeight.w500),
+                    tabs: const [
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.warning_amber_rounded,
+                                size: 16, color: Colors.orange),
+                            SizedBox(width: 6),
+                            Text("Critical Measurements"),
+                          ],
+                        ),
+                      ),
+                      Tab(
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.sos_rounded,
+                                size: 16, color: Colors.red),
+                            SizedBox(width: 6),
+                            Text("SOS Calls"),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
 
-          // ─ Action Row ─
-          if (!resolved)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          _resolveFirestoreAlert(docId),
-                      icon: const Icon(Icons.check_rounded,
-                          size: 16),
-                      label: const Text("Mark Resolved"),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: Colors.grey.shade700,
-                        side: BorderSide(
-                            color: Colors.grey.shade300),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: () =>
-                          _navigateToPatient(
-                              patientId, patientName),
-                      icon: const Icon(Icons.person_search_rounded,
-                          size: 16, color: Colors.white),
-                      label: const Text("View Patient",
-                          style: TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _blue,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(18, 10, 18, 14),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline,
-                      size: 14, color: Colors.grey.shade400),
-                  const SizedBox(width: 6),
-                  Text("Resolved",
-                      style: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 12)),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () =>
-                        _navigateToPatient(
-                            patientId, patientName),
-                    child: const Text("View Patient",
-                        style: TextStyle(
-                            fontSize: 12, color: _blue)),
-                  )
-                ],
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  double _riskLevel(double v, String unit) {
-    if (unit == "g/L") {
-      if (v > 1.8) return ((v - 1.8) / 2.0).clamp(0.1, 1.0);
-      if (v < 0.7) return ((0.7 - v) / 0.7).clamp(0.1, 1.0);
-    } else {
-      if (v > 180) return ((v - 180) / 400.0).clamp(0.1, 1.0);
-      if (v < 70) return ((70 - v) / 70.0).clamp(0.1, 1.0);
-    }
-    return 0.1;
-  }
-
-  // ─────────────────────────────────────────────
-  //  TAB 2 : SOS  (Realtime DB → sos/{uid}/{sosId})
-  // ─────────────────────────────────────────────
-  Widget _buildSosTab() {
-    return StreamBuilder<DatabaseEvent>(
-      stream: _db.child('sos').onValue,
-      builder: (_, snap) {
-        if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-
-        if (!snap.hasData || snap.data!.snapshot.value == null) {
-          return _emptyState(
-            Icons.sos_rounded,
-            Colors.orange,
-            "No SOS alerts",
-            "No emergency calls from patients",
-          );
-        }
-
-        Map sosData = snap.data!.snapshot.value as Map;
-        List<Map<String, dynamic>> items = [];
-
-        sosData.forEach((patientId, patientSos) {
-          if (patientSos is Map) {
-            patientSos.forEach((sosId, sosVal) {
-              if (sosVal is Map) {
-                items.add({
-                  'patientId': patientId.toString(),
-                  'sosId':     sosId.toString(),
-                  ...Map<String, dynamic>.from(sosVal),
-                });
-              }
-            });
-          }
-        });
-
-        // ترتيب من الأحدث للأقدم
-        items.sort((a, b) {
-          int ta = a['timestamp'] is int ? a['timestamp'] : 0;
-          int tb = b['timestamp'] is int ? b['timestamp'] : 0;
-          return tb.compareTo(ta);
-        });
-
-        // فلتر
-        if (_filterStatus == "Unresolved") {
-          items = items.where((m) => m['resolved'] != true).toList();
-        } else if (_filterStatus == "Resolved") {
-          items = items.where((m) => m['resolved'] == true).toList();
-        }
-
-        if (items.isEmpty) {
-          return _emptyState(
-            Icons.filter_list_off_rounded,
-            Colors.grey,
-            "No SOS alerts match this filter",
-            "Try changing the filter above",
-          );
-        }
-
-        return ListView.separated(
-          padding: const EdgeInsets.all(20),
-          itemCount: items.length,
-          separatorBuilder: (_, __) => const SizedBox(height: 12),
-          itemBuilder: (_, i) => _sosCard(items[i]),
-        );
-      },
-    );
-  }
-
-  Widget _sosCard(Map<String, dynamic> data) {
-    final bool resolved   = data['resolved'] == true;
-    final String pid      = data['patientId'] ?? "";
-    final String sosId    = data['sosId'] ?? "";
-    final String pname    = data['patientName'] ?? "Patient";
-    final String glucose  = data['glucose']?.toString() ?? "--";
-    final String location = data['location'] ?? "";
-
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      decoration: BoxDecoration(
-        color: resolved
-            ? const Color(0xFFF8F9FA)
-            : const Color(0xFFFFF8F0),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: resolved
-              ? const Color(0xFFE5E7EB)
-              : _orange.withOpacity(0.35),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // أيقونة SOS
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: resolved
-                        ? Colors.grey.shade100
-                        : _orange.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    resolved
-                        ? Icons.check_circle_rounded
-                        : Icons.sos_rounded,
-                    color: resolved ? Colors.grey : _orange,
-                    size: 26,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                // ── filter row ───────────────────────────────────
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Row(
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(pname,
-                                style: const TextStyle(
-                                    fontSize: 15,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF0D1117))),
-                          ),
-                          const SizedBox(width: 8),
-                          _typeBadge(
-                              resolved ? "resolved" : "SOS",
-                              resolved ? Colors.grey : _orange),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _fmtTime(data['timestamp']),
-                        style: TextStyle(
-                            color: Colors.grey.shade500,
-                            fontSize: 12),
+                      const Text("Show:",
+                          style:
+                              TextStyle(fontSize: 13, color: Colors.grey)),
+                      const SizedBox(width: 8),
+                      ..._buildFilters(),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => _markAllRead(entries),
+                        child: const Text(
+                          "Mark all as read",
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFF185FA5)),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                Text(
-                  _ago(data['timestamp']),
-                  style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 12),
+
+                // ── list ─────────────────────────────────────────
+                Expanded(
+                  child: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _AlertsList(
+                        entries: filtered('critical'),
+                        onResolve: _resolve,
+                        onDismiss: _dismiss,
+                        borderColor: _borderColor,
+                        iconColor: _iconColor,
+                        iconData: _iconData,
+                      ),
+                      _AlertsList(
+                        entries: filtered('sos'),
+                        onResolve: _resolve,
+                        onDismiss: _dismiss,
+                        borderColor: _borderColor,
+                        iconColor: _iconColor,
+                        iconData: _iconData,
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
+          );
+        },
+      ),
+    );
+  }
 
-          // ─ معلومات السكر والموقع ─
-          Padding(
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 0),
-            child: Row(
-              children: [
-                _valueBox("Glucose at SOS", "$glucose g/L",
-                    resolved ? Colors.grey : _orange),
-                if (location.isNotEmpty) ...[
-                  const SizedBox(width: 10),
-                  _locationChip(location),
-                ],
-              ],
-            ),
-          ),
-
-          // ─ Buttons ─
-          if (!resolved)
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(18, 14, 18, 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () =>
-                          _resolveSos(pid, sosId),
-                      icon: const Icon(Icons.check_rounded,
-                          size: 16),
-                      label: const Text("Resolve"),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor:
-                            Colors.grey.shade700,
-                        side: BorderSide(
-                            color: Colors.grey.shade300),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    flex: 2,
-                    child: ElevatedButton.icon(
-                      onPressed: () =>
-                          _navigateToPatient(pid, pname),
-                      icon: const Icon(
-                          Icons.person_search_rounded,
-                          size: 16,
-                          color: Colors.white),
-                      label: const Text("View Patient",
-                          style:
-                              TextStyle(color: Colors.white)),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: _orange,
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 10),
-                        shape: RoundedRectangleBorder(
-                            borderRadius:
-                                BorderRadius.circular(10)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            )
-          else
-            Padding(
-              padding:
-                  const EdgeInsets.fromLTRB(18, 10, 18, 14),
-              child: Row(
-                children: [
-                  Icon(Icons.check_circle_outline,
-                      size: 14,
-                      color: Colors.grey.shade400),
-                  const SizedBox(width: 6),
-                  Text("Resolved",
-                      style: TextStyle(
-                          color: Colors.grey.shade400,
-                          fontSize: 12)),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () =>
-                        _navigateToPatient(pid, pname),
-                    child: const Text("View Patient",
-                        style: TextStyle(
-                            fontSize: 12, color: _blue)),
-                  ),
-                ],
+  List<Widget> _buildFilters() {
+    final filters = ['all', 'unresolved', 'resolved'];
+    final labels = ['All', 'Unresolved', 'Resolved'];
+    return List.generate(filters.length, (i) {
+      bool active = _filter == filters[i];
+      return Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: GestureDetector(
+          onTap: () => setState(() => _filter = filters[i]),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: active ? const Color(0xFF185FA5) : Colors.white,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: active
+                    ? const Color(0xFF185FA5)
+                    : Colors.grey.shade300,
               ),
             ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────
-  //  HELPERS WIDGETS
-  // ─────────────────────────────────────────────
-  Widget _valueBox(String label, String value, Color col) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      decoration: BoxDecoration(
-        color: col.withOpacity(0.07),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label,
+            child: Text(
+              labels[i],
               style: TextStyle(
-                  color: Colors.grey.shade500, fontSize: 10)),
-          const SizedBox(height: 2),
-          Text(value,
-              style: TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 14,
-                  color: col)),
-        ],
-      ),
-    );
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+                color: active ? Colors.white : Colors.grey,
+              ),
+            ),
+          ),
+        ),
+      );
+    });
   }
+}
 
-  Widget _locationChip(String url) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEEF4FF),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          const Icon(Icons.location_on_rounded,
-              size: 14, color: _blue),
-          const SizedBox(width: 4),
-          Text("Location",
-              style: const TextStyle(
-                  fontSize: 12,
-                  color: _blue,
-                  fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
+// ─────────────────────────────────────────────────────────────────────────────
+// Sub-widgets
+// ─────────────────────────────────────────────────────────────────────────────
 
-  Widget _typeBadge(String label, Color col) {
-    return Container(
-      padding:
-          const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: col.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(label,
-          style: TextStyle(
-              color: col,
-              fontSize: 11,
-              fontWeight: FontWeight.w700)),
-    );
-  }
+class _BellButton extends StatelessWidget {
+  final bool hasUnread;
+  const _BellButton({required this.hasUnread});
 
-  Widget _emptyState(
-      IconData icon, Color col, String title, String sub) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 80,
-              height: 80,
-              decoration: BoxDecoration(
-                color: col.withOpacity(0.08),
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: const Icon(Icons.notifications_none_rounded,
+              size: 20, color: Colors.grey),
+        ),
+        if (hasUnread)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              width: 8,
+              height: 8,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE24B4A),
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 38, color: col),
             ),
-            const SizedBox(height: 20),
-            Text(title,
-                style: const TextStyle(
-                    fontSize: 17, fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            Text(sub,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                    color: Colors.grey.shade500, fontSize: 13)),
+          ),
+      ],
+    );
+  }
+}
+
+class _StatCard extends StatelessWidget {
+  final IconData icon;
+  final Color iconBg, iconColor;
+  final int value;
+  final String label;
+  const _StatCard({
+    required this.icon,
+    required this.iconBg,
+    required this.iconColor,
+    required this.value,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.grey.shade200),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: iconBg,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 18, color: iconColor),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              "$value",
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w500),
+            ),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 11, color: Colors.grey),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+class _AlertsList extends StatelessWidget {
+  final List<MapEntry<String, dynamic>> entries;
+  final Function(String, Map) onResolve;
+  final Function(String) onDismiss;
+  final Color Function(String) borderColor;
+  final Color Function(String) iconColor;
+  final IconData Function(String) iconData;
+
+  const _AlertsList({
+    required this.entries,
+    required this.onResolve,
+    required this.onDismiss,
+    required this.borderColor,
+    required this.iconColor,
+    required this.iconData,
+  });
+
+  String _timeAgo(int? ts) {
+    if (ts == null) return '';
+    final diff = DateTime.now()
+        .difference(DateTime.fromMillisecondsSinceEpoch(ts));
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} min ago';
+    if (diff.inHours < 24) return '${diff.inHours} hr ago';
+    return DateFormat('dd/MM').format(DateTime.fromMillisecondsSinceEpoch(ts));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.check_circle_outline_rounded,
+                size: 48, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            const Text("No alerts",
+                style: TextStyle(color: Colors.grey, fontSize: 14)),
+          ],
+        ),
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+      itemCount: entries.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 10),
+      itemBuilder: (context, i) {
+        final e = entries[i];
+        final data = Map<String, dynamic>.from(e.value);
+        final type = data['type']?.toString() ?? 'CRITICAL';
+        final resolved = data['status'] == 'resolved';
+        final unread = data['isRead'] == false;
+        final ts = data['timestamp'] as int?;
+
+        return Opacity(
+          opacity: resolved ? 0.6 : 1.0,
+          child: Container(
+            decoration: BoxDecoration(
+              color: type == 'SOS'
+                  ? const Color(0xFFFCEBEB)
+                  : Colors.white,
+              borderRadius: const BorderRadius.horizontal(
+                right: Radius.circular(12),
+              ),
+              border: Border(
+                left: BorderSide(
+                    color: resolved
+                        ? Colors.grey.shade300
+                        : borderColor(type),
+                    width: 3),
+                top: BorderSide(color: Colors.grey.shade200),
+                right: BorderSide(color: Colors.grey.shade200),
+                bottom: BorderSide(color: Colors.grey.shade200),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // title row
+                  Row(
+                    children: [
+                      Icon(iconData(type),
+                          size: 18,
+                          color: resolved
+                              ? Colors.grey
+                              : iconColor(type)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          type == 'SOS'
+                              ? "SOS emergency alert"
+                              : type == 'CRITICAL'
+                                  ? "Critical glucose level"
+                                  : "Glucose warning",
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500),
+                        ),
+                      ),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time_rounded,
+                              size: 12, color: Colors.grey),
+                          const SizedBox(width: 3),
+                          Text(_timeAgo(ts),
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.grey)),
+                          if (unread && !resolved) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFE24B4A),
+                                shape: BoxShape.circle,
+                              ),
+                            ),
+                          ]
+                        ],
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  // body
+                  Padding(
+                    padding: const EdgeInsets.only(left: 26),
+                    child: Text(
+                      "Glucose: ${data['glucose']} g/L — "
+                      "${type == 'SOS' ? 'Patient triggered SOS.' : type == 'CRITICAL' ? 'Immediate attention required.' : 'Monitor closely.'}",
+                      style: const TextStyle(
+                          fontSize: 13, color: Colors.grey, height: 1.5),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  // footer
+                  Padding(
+                    padding: const EdgeInsets.only(left: 26),
+                    child: Row(
+                      children: [
+                        _Tag(
+                            label: data['patientName'] ?? 'Unknown',
+                            bg: const Color(0xFFE6F1FB),
+                            fg: const Color(0xFF0C447C)),
+                        const SizedBox(width: 6),
+                        _Tag(
+                            label: type,
+                            bg: type == 'SOS'
+                                ? const Color(0xFFFCEBEB)
+                                : const Color(0xFFFAEEDA),
+                            fg: type == 'SOS'
+                                ? const Color(0xFF791F1F)
+                                : const Color(0xFF633806)),
+                        const Spacer(),
+                        if (!resolved)
+                          GestureDetector(
+                            onTap: () => onResolve(e.key, data),
+                            child: const Text(
+                              "Mark as resolved",
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  color: Color(0xFF185FA5)),
+                            ),
+                          ),
+                        if (resolved)
+                          const Icon(Icons.check_rounded,
+                              size: 14, color: Colors.grey),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: () => onDismiss(e.key),
+                          child: Container(
+                            width: 22,
+                            height: 22,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                  color: Colors.grey.shade300),
+                            ),
+                            child: const Icon(Icons.close_rounded,
+                                size: 12, color: Colors.grey),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _Tag extends StatelessWidget {
+  final String label;
+  final Color bg, fg;
+  const _Tag({required this.label, required this.bg, required this.fg});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(6)),
+      child: Text(label,
+          style: TextStyle(
+              fontSize: 11, fontWeight: FontWeight.w500, color: fg)),
     );
   }
 }

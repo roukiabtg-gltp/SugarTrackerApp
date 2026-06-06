@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as fst;
 import 'package:firebase_database/firebase_database.dart';
+import '../doctor_settings_notifier.dart';
 
 class AdministrationPage extends StatefulWidget {
   const AdministrationPage({super.key});
@@ -11,7 +12,7 @@ class AdministrationPage extends StatefulWidget {
 }
 
 class _AdministrationPageState extends State<AdministrationPage> {
-  String _section = "Staff";
+  String _section = 'Staff';
   final String? _dId = FirebaseAuth.instance.currentUser?.uid;
   final _db = FirebaseDatabase.instance.ref();
   final _fs = fst.FirebaseFirestore.instance;
@@ -67,11 +68,11 @@ class _AdministrationPageState extends State<AdministrationPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Administration",
-                style: TextStyle(fontSize: 26, fontWeight: FontWeight.w700,
+            Text(t('Administration','الإدارة','Administration'),
+                style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w700,
                     color: Color(0xFF0D1117))),
             const SizedBox(height: 6),
-            Text("Manage staff and patients",
+            Text(t('Manage staff and patients','إدارة الطاقم والمرضى','Gérer le personnel et les patients'),
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
             const SizedBox(height: 28),
 
@@ -101,9 +102,9 @@ class _AdministrationPageState extends State<AdministrationPage> {
       child: Column(
         children: [
           const SizedBox(height: 8),
-          _sItem(Icons.people_outline_rounded,        "Staff Management", "Staff"),
-          _sItem(Icons.person_add_outlined,            "Create Patient",   "Patient"),
-          _sItem(Icons.manage_accounts_outlined,       "Manage Data",      "Data"),
+          _sItem(Icons.people_outline_rounded,        t('Staff Management','إدارة الطاقم','Gestion du personnel'), "Staff"),
+          _sItem(Icons.person_add_outlined,           t('Create Patient','إنشاء مريض','Créer un patient'),   "Patient"),
+          _sItem(Icons.manage_accounts_outlined,      t('Manage Data','إدارة البيانات','Gérer les données'),      "Data"),
           const SizedBox(height: 8),
         ],
       ),
@@ -151,7 +152,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
         _card(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _secHeader("Current Staff", Icons.badge_outlined, _blue),
+            _secHeader(t('Current Staff','أعضاء الطاقم الحاليين','Personnel actuel'), Icons.badge_outlined, _blue),
             const SizedBox(height: 16),
             StreamBuilder<fst.QuerySnapshot>(
               stream: _fs.collection('users')
@@ -164,7 +165,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
                 }
                 final docs = snap.data?.docs ?? [];
                 if (docs.isEmpty) {
-                  return _empty("No staff accounts yet", Icons.person_off_outlined);
+                  return _empty(t('No staff accounts yet','لا توجد حسابات طاقم بعد','Aucun compte de personnel pour le moment'), Icons.person_off_outlined);
                 }
                 return ListView.builder(
                   shrinkWrap: true,
@@ -191,21 +192,21 @@ class _AdministrationPageState extends State<AdministrationPage> {
         _card(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _secHeader("Add New Staff Account", Icons.person_add_outlined, _blue),
+            _secHeader(t('Add New Staff Account','إضافة حساب طاقم جديد','Ajouter un compte de personnel'), Icons.person_add_outlined, _blue),
             const SizedBox(height: 6),
-            Text("Creates a login account for your nurse or secretary.",
+            Text(t('Creates a login account for your nurse or secretary.','ينشئ حساب تسجيل الدخول للممرضة أو السكرتيرة.','Crée un compte de connexion pour votre infirmière ou secrétaire.'),
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
             const SizedBox(height: 20),
 
             Row(children: [
-              Expanded(child: _tf("Full Name", _sName, icon: Icons.badge_outlined)),
+              Expanded(child: _tf(t('Full Name','الاسم الكامل','Nom complet'), _sName, icon: Icons.badge_outlined)),
               const SizedBox(width: 14),
-              Expanded(child: _tf("Email", _sEmail, icon: Icons.email_outlined, keyboard: TextInputType.emailAddress)),
+              Expanded(child: _tf(t('Email','البريد الإلكتروني','Email'), _sEmail, icon: Icons.email_outlined, keyboard: TextInputType.emailAddress)),
             ]),
             const SizedBox(height: 14),
             SizedBox(
               width: 300,
-              child: _tf("Initial Password", _sPass,
+              child: _tf(t('Initial Password','كلمة المرور الأولية','Mot de passe initial'), _sPass,
                   icon: Icons.lock_outline,
                   obscure: !_sPassVis,
                   suffix: IconButton(
@@ -220,7 +221,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
               icon: _sLoading
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.add, size: 18, color: Colors.white),
-              label: const Text("Create Staff Account", style: TextStyle(color: Colors.white)),
+              label: Text(t('Create Staff Account','إنشاء حساب طاقم','Créer un compte de personnel'), style: const TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _blue, elevation: 0,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -266,7 +267,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
         ),
         const SizedBox(width: 10),
         IconButton(
-          tooltip: "Remove staff account",
+          tooltip: t('Remove staff account','إزالة حساب الطاقم','Supprimer le compte du personnel'),
           icon: const Icon(Icons.delete_outline_rounded, color: _red, size: 20),
           onPressed: () => _confirmDelete(
             title: "Remove $name?",
@@ -284,7 +285,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
   // إنشاء حساب الطاقم بدون تسجيل خروج الطبيب الحركي
   Future<void> _createStaff() async {
     if (_sName.text.trim().isEmpty || _sEmail.text.trim().isEmpty || _sPass.text.trim().length < 6) {
-      _snack("Fill all fields (password min 6 chars)", err: true);
+      _snack(t('Fill all fields (password min 6 chars)','املأ جميع الحقول (كلمة المرور 6 أحرف على الأقل)','Remplissez tous les champs (mot de passe min 6 caractères)'), err: true);
       return;
     }
     setState(() => _sLoading = true);
@@ -314,7 +315,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
       });
 
       _sName.clear(); _sEmail.clear(); _sPass.clear();
-      _snack("Staff account created ✅");
+      _snack(t('Staff account created ✅','تم إنشاء حساب الطاقم ✅','Compte du personnel créé ✅'));
     } catch (e) {
       _snack("Error: $e", err: true);
     } finally {
@@ -333,7 +334,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
         _card(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _secHeader("Linked Patients", Icons.people_outline_rounded, _blue),
+            _secHeader(t('Linked Patients','المرضى المرتبطون','Patients liés'), Icons.people_outline_rounded, _blue),
             const SizedBox(height: 16),
             StreamBuilder<DatabaseEvent>(
               stream: _db.child('users').orderByChild('doctorId').equalTo(_dId).onValue,
@@ -373,40 +374,40 @@ class _AdministrationPageState extends State<AdministrationPage> {
         _card(child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _secHeader("Create Patient Account", Icons.person_add_alt_1_outlined, _blue),
+            _secHeader(t('Create Patient Account','إنشاء حساب مريض','Créer un compte patient'), Icons.person_add_alt_1_outlined, _blue),
             const SizedBox(height: 6),
-            Text("Creates a mobile app account linked to you.",
+            Text(t('Creates a mobile app account linked to you.','ينشئ حساب تطبيق جوال مرتبطًا بك.','Crée un compte d’application mobile lié à vous.'),
                 style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
             const SizedBox(height: 20),
 
             Row(children: [
-              Expanded(child: _tf("First Name", _pFirst, icon: Icons.person_outline)),
+              Expanded(child: _tf(t('First Name','الاسم الأول','Prénom'), _pFirst, icon: Icons.person_outline)),
               const SizedBox(width: 14),
-              Expanded(child: _tf("Last Name", _pLast, icon: Icons.person_outline)),
+              Expanded(child: _tf(t('Last Name','اسم العائلة','Nom de famille'), _pLast, icon: Icons.person_outline)),
             ]),
             const SizedBox(height: 14),
             Row(children: [
-              Expanded(child: _tf("Email", _pEmail, icon: Icons.email_outlined, keyboard: TextInputType.emailAddress)),
+              Expanded(child: _tf(t('Email','البريد الإلكتروني','Email'), _pEmail, icon: Icons.email_outlined, keyboard: TextInputType.emailAddress)),
               const SizedBox(width: 14),
-              Expanded(child: _tf("Phone", _pPhone, icon: Icons.phone_outlined, keyboard: TextInputType.phone)),
+              Expanded(child: _tf(t('Phone','الهاتف','Téléphone'), _pPhone, icon: Icons.phone_outlined, keyboard: TextInputType.phone)),
             ]),
             const SizedBox(height: 14),
             Row(children: [
               Expanded(child: _dropdown(
-                label: "Gender",
+                label: t('Gender','الجنس','Genre'),
                 value: _pGender,
                 items: const ['Male', 'Female'],
                 onChanged: (v) => setState(() => _pGender = v!),
               )),
               const SizedBox(width: 14),
               Expanded(child: _dropdown(
-                label: "Blood Type",
+                label: t('Blood Type','فصيلة الدم','Groupe sanguin'),
                 value: _pBlood,
                 items: const ['A+','A-','B+','B-','AB+','AB-','O+','O-'],
                 onChanged: (v) => setState(() => _pBlood = v!),
               )),
               const SizedBox(width: 14),
-              Expanded(child: _tf("Password", _pPass,
+              Expanded(child: _tf(t('Password','كلمة المرور','Mot de passe'), _pPass,
                   icon: Icons.lock_outline,
                   obscure: !_pPassVis,
                   suffix: IconButton(
@@ -421,7 +422,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
               icon: _pLoading
                   ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                   : const Icon(Icons.add, size: 18, color: Colors.white),
-              label: const Text("Create Patient Account", style: TextStyle(color: Colors.white)),
+              label: Text(t('Create Patient Account','إنشاء حساب مريض','Créer un compte patient'), style: const TextStyle(color: Colors.white)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: _blue, elevation: 0,
                 padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -458,14 +459,14 @@ class _AdministrationPageState extends State<AdministrationPage> {
           ],
         )),
         IconButton(
-          tooltip: "Remove patient link",
+          tooltip: t('Remove patient link','إزالة رابط المريض','Supprimer le lien du patient'),
           icon: const Icon(Icons.link_off_rounded, color: _red, size: 20),
           onPressed: () => _confirmDelete(
             title: "Unlink $name?",
             sub: "This removes the doctor link. The patient account will not be deleted.",
             onConfirm: () async {
               await _db.child('users/$uid/doctorId').remove();
-              _snack("$name unlinked");
+              _snack(t('$name unlinked','$name تم فك ارتباطه','$name dissocié'));
             },
           ),
         ),
@@ -476,7 +477,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
   // إنشاء حساب المريض بدون تسجيل خروج الطبيب
   Future<void> _createPatient() async {
     if (_pFirst.text.trim().isEmpty || _pEmail.text.trim().isEmpty || _pPass.text.trim().length < 6) {
-      _snack("Fill required fields (password min 6)", err: true);
+      _snack(t('Fill required fields (password min 6)','املأ الحقول المطلوبة (كلمة المرور 6 أحرف على الأقل)','Remplissez les champs obligatoires (mot de passe min 6)'), err: true);
       return;
     }
     setState(() => _pLoading = true);
@@ -507,7 +508,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
       });
 
       _pFirst.clear(); _pLast.clear(); _pEmail.clear(); _pPhone.clear(); _pPass.clear();
-      _snack("Patient account created ✅");
+      _snack(t('Patient account created ✅','تم إنشاء حساب المريض ✅','Compte patient créé ✅'));
     } catch (e) {
       _snack("Error: $e", err: true);
     } finally {
@@ -523,7 +524,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
     return _card(child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _secHeader("Manage Data", Icons.manage_accounts_outlined, _blue),
+        _secHeader(t('Manage Data','إدارة البيانات','Gérer les données'), Icons.manage_accounts_outlined, _blue),
         const SizedBox(height: 16),
 
         StreamBuilder<DatabaseEvent>(
@@ -533,7 +534,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
             if (snap.hasData && snap.data!.snapshot.value != null) {
               cnt = (snap.data!.snapshot.value as Map).length;
             }
-            return _dataRow(Icons.people_outline_rounded, "Total Patients", "$cnt patients", Colors.blue);
+            return _dataRow(Icons.people_outline_rounded, t('Total Patients','إجمالي المرضى','Total Patients'), "$cnt ${t('patients','مرضى','patients')}", Colors.blue);
           },
         ),
         const Divider(height: 20),
@@ -542,7 +543,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
           stream: _fs.collection('users').where('doctorId', isEqualTo: _dId).where('role', isEqualTo: 'nurse').snapshots(),
           builder: (_, snap) {
             final cnt = snap.data?.docs.length ?? 0;
-            return _dataRow(Icons.badge_outlined, "Staff Members", "$cnt accounts", Colors.purple);
+            return _dataRow(Icons.badge_outlined, t('Staff Members','أعضاء الطاقم','Membres du personnel'), "$cnt ${t('accounts','حسابات','comptes')}", Colors.purple);
           },
         ),
         const Divider(height: 20),
@@ -551,7 +552,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
           stream: _fs.collection('appointments').where('doctorId', isEqualTo: _dId).snapshots(),
           builder: (_, snap) {
             final cnt = snap.data?.docs.length ?? 0;
-            return _dataRow(Icons.calendar_today_outlined, "Total Appointments", "$cnt appointments", Colors.green);
+            return _dataRow(Icons.calendar_today_outlined, t('Total Appointments','إجمالي المواعيد','Total des rendez-vous'), "$cnt ${t('appointments','مواعيد','rendez-vous')}", Colors.green);
           },
         ),
       ],
@@ -605,7 +606,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text("Cancel"),
+            child: Text(t('Cancel','إلغاء','Annuler')),
           ),
           ElevatedButton(
             onPressed: () async {
@@ -616,7 +617,7 @@ class _AdministrationPageState extends State<AdministrationPage> {
               backgroundColor: _red, elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
-            child: const Text("Confirm", style: TextStyle(color: Colors.white)),
+            child: Text(t('Confirm','تأكيد','Confirmer'), style: const TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -694,6 +695,14 @@ class _AdministrationPageState extends State<AdministrationPage> {
       focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: const BorderSide(color: _blue, width: 1.5)),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
     ),
-    items: items.map((e) => DropdownMenuItem(value: e, child: Text(e, style: const TextStyle(fontSize: 13)))).toList(),
+    items: items.map((e) => DropdownMenuItem(value: e, child: Text(_menuLabel(e), style: const TextStyle(fontSize: 13)))).toList(),
   );
+}
+
+String _menuLabel(String value) {
+  switch (value) {
+    case 'Male': return t('Male','ذكر','Homme');
+    case 'Female': return t('Female','أنثى','Femme');
+    default: return value;
+  }
 }

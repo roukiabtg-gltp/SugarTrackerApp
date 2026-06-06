@@ -12,6 +12,7 @@ import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as fst;
 import 'package:intl/intl.dart';
 import 'patient_profile_page.dart';
+import '../doctor_settings_notifier.dart';
 
 class ProfessionalDashboard extends StatefulWidget {
   const ProfessionalDashboard({super.key});
@@ -34,10 +35,10 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
   double _gl(dynamic v) => double.tryParse(v?.toString() ?? '') ?? 0;
 
   String _glucoseDesc(double gL) {
-    if (gL > _critHigh) return 'High glucose — Hyperglycemia';
-    if (gL < _critLow && gL > 0) return 'Low glucose — Hypoglycemia';
-    if (gL > _warnHigh) return 'Borderline high';
-    return 'Normal range';
+    if (gL > _critHigh) return t('High glucose — Hyperglycemia', 'ارتفاع السكر — فرط سكر الدم', 'Glycémie élevée — Hyperglycémie');
+    if (gL < _critLow && gL > 0) return t('Low glucose — Hypoglycemia', 'انخفاض السكر — نقص سكر الدم', 'Glycémie basse — Hypoglycémie');
+    if (gL > _warnHigh) return t('Borderline high', 'قريب من الحد الأعلى', 'Limite supérieure');
+    return t('Normal range', 'نطاق طبيعي', 'Plage normale');
   }
 
   String _ago(dynamic raw) {
@@ -48,7 +49,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
       else if (raw is fst.Timestamp) { ms = raw.millisecondsSinceEpoch; }
       else { ms = int.tryParse(raw.toString()) ?? 0; if (ms > 0 && ms < 9999999999) ms *= 1000; }
       final d = DateTime.now().difference(DateTime.fromMillisecondsSinceEpoch(ms));
-      if (d.inMinutes <  1) return 'Just now';
+      if (d.inMinutes <  1) return t('Just now', 'الآن', 'À l\'instant');
       if (d.inMinutes < 60) return '${d.inMinutes}m ago';
       if (d.inHours   < 24) return '${d.inHours}h ago';
       return '${d.inDays}d ago';
@@ -120,10 +121,10 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                 final isWarn = !isCrit && _isWarning(raw);
                 final gL     = _gl(raw);
 
-                if (isCrit && !seenCrit.contains(pid)) {
+                  if (isCrit && !seenCrit.contains(pid)) {
                   seenCrit.add(pid);
                   critAlerts.add(_AlertItem(
-                    patientId: pid, patientName: nm.isEmpty ? 'Patient' : nm,
+                    patientId: pid, patientName: nm.isEmpty ? t('Patient','مريض','Patient') : nm,
                     reason: _glucoseDesc(gL),
                     value: '${raw ?? '--'} ${d['unit'] ?? 'g/L'}',
                     ts: ts, isCritical: true,
@@ -131,7 +132,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                 } else if (isWarn && !seenWarn.contains(pid)) {
                   seenWarn.add(pid);
                   warnAlerts.add(_AlertItem(
-                    patientId: pid, patientName: nm.isEmpty ? 'Patient' : nm,
+                    patientId: pid, patientName: nm.isEmpty ? t('Patient','مريض','Patient') : nm,
                     reason: 'Borderline high glucose',
                     value: '${raw ?? '--'} ${d['unit'] ?? 'g/L'}',
                     ts: ts, isCritical: false,
@@ -156,7 +157,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                           final nm  = '${pat['first_name'] ?? ''} ${pat['last_name'] ?? ''}'.trim();
                           sosList.add(_SosItem(
                             patientId: pid.toString(), sosId: sosId.toString(),
-                            patientName: sv['patientName'] ?? (nm.isEmpty ? 'Patient' : nm),
+                            patientName: sv['patientName'] ?? (nm.isEmpty ? t('Patient','مريض','Patient') : nm),
                             glucose: sv['glucose']?.toString() ?? '--',
                             timestamp: sv['timestamp'],
                           ));
@@ -180,11 +181,11 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
                             Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                              const Text('Dashboard',
-                                  style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
+                              Text(t('Dashboard', 'لوحة التحكم', 'Tableau de bord'),
+                                style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1A237E))),
                               const SizedBox(height: 4),
                               Text(DateFormat('EEEE, MMMM d yyyy').format(DateTime.now()),
-                                  style: const TextStyle(color: Colors.grey, fontSize: 14)),
+                                style: const TextStyle(color: Colors.grey, fontSize: 14)),
                             ]),
                             _doctorCodeCard(),
                           ],
@@ -193,14 +194,14 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
 
                         // ── Stats Row ───────────────────
                         Row(children: [
-                          _statCard('Total Patients', '${patientIds.length}',
+                            _statCard(t('Total Patients', 'إجمالي المرضى', 'Total patients'), '${patientIds.length}',
                               Icons.people_alt_outlined, const Color(0xFF3B82F6), const Color(0xFFEFF6FF)),
                           const SizedBox(width: 20),
-                          _statCard('Critical Alerts', '${critAlerts.length + sosList.length}',
+                            _statCard(t('Critical Alerts', 'تنبيهات حرجة', 'Alertes critiques'), '${critAlerts.length + sosList.length}',
                               Icons.warning_amber_rounded, const Color(0xFFEF4444), const Color(0xFFFEF2F2),
                               blink: critAlerts.isNotEmpty || sosList.isNotEmpty),
                           const SizedBox(width: 20),
-                          _statCard('Warnings', '${warnAlerts.length}',
+                            _statCard(t('Warnings', 'تحذيرات', 'Alertes'), '${warnAlerts.length}',
                               Icons.info_outline_rounded, const Color(0xFFF59E0B), const Color(0xFFFFFBEB)),
                           const SizedBox(width: 20),
                           // مواعيد اليوم من Firestore
@@ -210,7 +211,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                             builder: (_, apSnap) {
                               final cnt = (apSnap.data?.docs ?? []).where((d) =>
                                   (d.data() as Map)['date']?.toString().startsWith(todayStr) == true).length;
-                              return _statCard("Today's Appointments", '$cnt',
+                                return _statCard(t("Today's Appointments", 'مواعيد اليوم', 'Rendez-vous d\'aujourd\'hui'), '$cnt',
                                   Icons.calendar_today_outlined, const Color(0xFF10B981), const Color(0xFFF0FFF4));
                             },
                           ),
@@ -351,8 +352,8 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                       badge: docs.isNotEmpty ? '${docs.length}' : null,
                                       badgeBg: const Color(0xFFF0FFF4),
                                       badgeColor: const Color(0xFF10B981),
-                                      child: docs.isEmpty
-                                          ? _empty('No appointments today', Icons.event_available_outlined, Colors.grey)
+                                        child: docs.isEmpty
+                                          ? _empty(t('No appointments today','لا توجد مواعيد اليوم','Pas de rendez-vous aujourd\'hui'), Icons.event_available_outlined, Colors.grey)
                                           : Column(children: docs.take(5).map((doc) {
                                               final d      = doc.data() as Map<String, dynamic>;
                                               final isConf = d['status']?.toString() == 'confirme';
@@ -369,9 +370,9 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                                   Expanded(child: Column(
                                                     crossAxisAlignment: CrossAxisAlignment.start,
                                                     children: [
-                                                      Text(d['patientName'] ?? 'Patient',
+                                                        Text(d['patientName'] ?? t('Patient','مريض','Patient'),
                                                           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
-                                                      Text('${d['time'] ?? '--'} · ${d['type'] ?? '--'}',
+                                                        Text('${d['time'] ?? '--'} · ${d['type'] ?? '--'}',
                                                           style: const TextStyle(color: Colors.grey, fontSize: 11)),
                                                     ],
                                                   )),
@@ -381,7 +382,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                                       color: isConf ? const Color(0xFFDCFCE7) : const Color(0xFFFEF3C7),
                                                       borderRadius: BorderRadius.circular(20),
                                                     ),
-                                                    child: Text(isConf ? 'Confirmed' : 'Pending',
+                                                    child: Text(isConf ? t('Confirmed','مؤكد','Confirmé') : t('Pending','قيد الانتظار','En attente'),
                                                         style: TextStyle(
                                                             color: isConf ? const Color(0xFF16A34A) : const Color(0xFFD97706),
                                                             fontSize: 10, fontWeight: FontWeight.bold)),
@@ -424,7 +425,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
         const Icon(Icons.qr_code_2, color: Color(0xFF3B82F6), size: 22),
         const SizedBox(width: 12),
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          const Text('Your doctor code', style: TextStyle(color: Colors.grey, fontSize: 11)),
+          Text(t('Your doctor code', 'رمز الطبيب الخاص بك', 'Votre code docteur'), style: const TextStyle(color: Colors.grey, fontSize: 11)),
           const SizedBox(height: 2),
           Text(_dId ?? '---',
               style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.bold,
@@ -432,20 +433,20 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
         ]),
         const SizedBox(width: 12),
         Tooltip(
-          message: 'Copy code',
+          message: t('Copy code','نسخ الرمز','Copier le code'),
           child: InkWell(
             onTap: () {
               Clipboard.setData(ClipboardData(text: _dId ?? ''));
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('✅ Code copied! Share with your patient'),
-                  behavior: SnackBarBehavior.floating, duration: Duration(seconds: 2)));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text(t('✅ Code copied! Share with your patient','✅ تم نسخ الرمز! شاركه مع المريض','✅ Code copié! Partagez avec votre patient')),
+                  behavior: SnackBarBehavior.floating, duration: const Duration(seconds: 2)));
             },
             borderRadius: BorderRadius.circular(8),
             child: Container(
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(color: const Color(0xFF3B82F6).withOpacity(0.12),
                   borderRadius: BorderRadius.circular(8)),
-              child: const Icon(Icons.copy, size: 16, color: Color(0xFF3B82F6)),
+                child: const Icon(Icons.copy, size: 16, color: Color(0xFF3B82F6)),
             ),
           ),
         ),
@@ -560,11 +561,11 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
               decoration: BoxDecoration(color: color.withOpacity(0.15), borderRadius: BorderRadius.circular(5)),
-              child: const Text('SOS', style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
+              child: Text(t('SOS','نداء استغاثة','SOS'), style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w800)),
             ),
           ]),
           const SizedBox(height: 3),
-          Text('Glucose: ${s.glucose} g/L', style: const TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
+          Text('${t('Glucose','السكر','Glucose')}: ${s.glucose} g/L', style: const TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w500)),
         ])),
         Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
           Text(_ago(s.timestamp), style: const TextStyle(color: Colors.grey, fontSize: 11)),
@@ -581,7 +582,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: const Color(0xFFFFF5EC), borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: color.withOpacity(0.4))),
-                child: const Text('Resolve', style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
+                child: Text(t('Resolve','حل','Résoudre'), style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ),
             const SizedBox(width: 6),
@@ -592,7 +593,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(color: const Color(0xFFEEF4FF), borderRadius: BorderRadius.circular(8)),
-                child: const Text('View', style: TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.w600)),
+                child: Text(t('View','عرض','Voir'), style: const TextStyle(color: Color(0xFF3B82F6), fontSize: 12, fontWeight: FontWeight.w600)),
               ),
             ),
           ]),
@@ -607,10 +608,10 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16),
           boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10)]),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.science_outlined, color: Color(0xFF3B82F6), size: 18),
-          SizedBox(width: 8),
-          Text('Glucose Reference Values', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+        Row(children: [
+          const Icon(Icons.science_outlined, color: Color(0xFF3B82F6), size: 18),
+          const SizedBox(width: 8),
+          Text(t('Glucose Reference Values','قيم مرجعية للسكر','Valeurs de référence du glucose'), style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
         ]),
         const SizedBox(height: 14),
         Table(

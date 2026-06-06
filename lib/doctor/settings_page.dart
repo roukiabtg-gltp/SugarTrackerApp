@@ -39,14 +39,6 @@ class _SettingsPageState extends State<SettingsPage> {
     super.dispose();
   }
 
-  // ── ترجمة بسيطة ────────────────────────────────────────
-  String _t(String en, String ar, String fr) {
-    final lang = doctorLocale.value.languageCode;
-    if (lang == 'ar') return ar;
-    if (lang == 'fr') return fr;
-    return en;
-  }
-
   // ── تغيير كلمة السر ────────────────────────────────────
   Future<void> _changePassword() async {
     final old  = _oldPassCtrl.text.trim();
@@ -54,15 +46,15 @@ class _SettingsPageState extends State<SettingsPage> {
     final conf = _confPassCtrl.text.trim();
 
     if (old.isEmpty || nw.isEmpty || conf.isEmpty) {
-      _snack(_t('Fill all fields', 'يرجى ملء جميع الحقول', 'Remplissez tous les champs'), isError: true);
+      _snack(t('Fill all fields', 'يرجى ملء جميع الحقول', 'Remplissez tous les champs'), isError: true);
       return;
     }
     if (nw != conf) {
-      _snack(_t('Passwords do not match', 'كلمتا السر غير متطابقتين', 'Les mots de passe ne correspondent pas'), isError: true);
+      _snack(t('Passwords do not match', 'كلمتا السر غير متطابقتين', 'Les mots de passe ne correspondent pas'), isError: true);
       return;
     }
     if (nw.length < 6) {
-      _snack(_t('Min 6 characters', 'الحد الأدنى 6 أحرف', 'Minimum 6 caractères'), isError: true);
+      _snack(t('Min 6 characters', 'الحد الأدنى 6 أحرف', 'Minimum 6 caractères'), isError: true);
       return;
     }
 
@@ -73,10 +65,10 @@ class _SettingsPageState extends State<SettingsPage> {
       await user.reauthenticateWithCredential(cred);
       await user.updatePassword(nw);
       _oldPassCtrl.clear(); _newPassCtrl.clear(); _confPassCtrl.clear();
-      _snack(_t('Password updated ✅', 'تم تغيير كلمة السر ✅', 'Mot de passe mis à jour ✅'));
+      _snack(t('Password updated ✅', 'تم تغيير كلمة السر ✅', 'Mot de passe mis à jour ✅'));
     } on FirebaseAuthException catch (e) {
       _snack(e.code == 'wrong-password'
-          ? _t('Wrong current password', 'كلمة السر الحالية غير صحيحة', 'Mot de passe actuel incorrect')
+          ? t('Wrong current password', 'كلمة السر الحالية غير صحيحة', 'Mot de passe actuel incorrect')
           : e.message ?? 'Error',
           isError: true);
     } finally {
@@ -119,7 +111,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                         // ── Page Title ─────────────────────────────
                         Text(
-                          _t('Settings', 'الإعدادات', 'Paramètres'),
+                          t('Settings', 'الإعدادات', 'Paramètres'),
                           style: TextStyle(
                             fontSize: 26 * scale,
                             fontWeight: FontWeight.w700,
@@ -128,31 +120,40 @@ class _SettingsPageState extends State<SettingsPage> {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          _t('Customize your experience', 'خصّص تجربتك', 'Personnalisez votre expérience'),
+                          t('Customize your experience', 'خصّص تجربتك', 'Personnalisez votre expérience'),
                           style: TextStyle(fontSize: 13 * scale, color: Colors.grey),
                         ),
                         const SizedBox(height: 32),
 
                         // ── SECTION 1: Appearance ──────────────────
-                        _sectionTitle(_t('Appearance', 'المظهر', 'Apparence'), Icons.palette_outlined, scale, isDark),
+                        _sectionTitle(t('Appearance', 'المظهر', 'Apparence'), Icons.palette_outlined, scale, isDark),
                         const SizedBox(height: 14),
                         _card(isDark, child: Column(children: [
 
                           // Dark / Light toggle
-                          _settingRow(
-                            icon: isDark ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
-                            iconColor: isDark ? const Color(0xFF7C83FD) : const Color(0xFFF59E0B),
-                            label: _t('Dark Mode', 'الوضع الداكن', 'Mode sombre'),
-                            sub: isDark
-                                ? _t('Dark theme active', 'الوضع الداكن مفعّل', 'Thème sombre activé')
-                                : _t('Light theme active', 'الوضع الفاتح مفعّل', 'Thème clair activé'),
-                            scale: scale,
-                            isDark: isDark,
-                            trailing: Switch(
-                              value: isDark,
-                              onChanged: (v) => setDoctorTheme(v ? ThemeMode.dark : ThemeMode.light),
-                              activeColor: _blue,
-                            ),
+                          ValueListenableBuilder<ThemeMode>(
+                            valueListenable: doctorThemeMode,
+                            builder: (context, mode, _) {
+                              final darkMode = mode == ThemeMode.dark;
+                              return SwitchListTile(
+                                title: Text(t('Dark Mode', 'الوضع الليلي', 'Mode Sombre')),
+                                value: darkMode,
+                                onChanged: (bool value) {
+                                  setDoctorTheme(value ? ThemeMode.dark : ThemeMode.light);
+                                },
+                                activeColor: _blue,
+                                subtitle: Text(
+                                  darkMode
+                                      ? t('Dark theme active', 'الوضع الداكن مفعّل', 'Thème sombre activé')
+                                      : t('Light theme active', 'الوضع الفاتح مفعّل', 'Thème clair activé'),
+                                  style: TextStyle(fontSize: 12 * scale, color: Colors.grey.shade500),
+                                ),
+                                secondary: Icon(
+                                  darkMode ? Icons.dark_mode_rounded : Icons.light_mode_rounded,
+                                  color: darkMode ? const Color(0xFF7C83FD) : const Color(0xFFF59E0B),
+                                ),
+                              );
+                            },
                           ),
 
                           Divider(color: isDark ? Colors.white12 : _border, height: 1),
@@ -164,7 +165,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(height: 28),
 
                         // ── SECTION 2: Language ────────────────────
-                        _sectionTitle(_t('Language', 'اللغة', 'Langue'), Icons.language_rounded, scale, isDark),
+                        _sectionTitle(t('Language', 'اللغة', 'Langue'), Icons.language_rounded, scale, isDark),
                         const SizedBox(height: 14),
                         _card(isDark, child: Column(children: [
                           _langOption('en', '🇬🇧', 'English',  'English',  lang, scale, isDark),
@@ -177,7 +178,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(height: 28),
 
                         // ── SECTION 3: Security ────────────────────
-                        _sectionTitle(_t('Security', 'الأمان', 'Sécurité'), Icons.lock_outline_rounded, scale, isDark),
+                        _sectionTitle(t('Security', 'الأمان', 'Sécurité'), Icons.lock_outline_rounded, scale, isDark),
                         const SizedBox(height: 14),
                         _card(isDark, child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -186,7 +187,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             Padding(
                               padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                               child: Text(
-                                _t('Change Password', 'تغيير كلمة السر', 'Changer le mot de passe'),
+                                t('Change Password', 'تغيير كلمة السر', 'Changer le mot de passe'),
                                 style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   fontSize: 14 * scale,
@@ -198,7 +199,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             Padding(
                               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
                               child: Text(
-                                _t('Enter your current password to confirm identity',
+                                t('Enter your current password to confirm identity',
                                    'أدخل كلمة سرك الحالية للتحقق من هويتك',
                                    'Entrez votre mot de passe actuel pour confirmer votre identité'),
                                 style: TextStyle(fontSize: 12 * scale, color: Colors.grey),
@@ -209,7 +210,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             // Old password
                             _passField(
                               ctrl: _oldPassCtrl,
-                              label: _t('Current Password', 'كلمة السر الحالية', 'Mot de passe actuel'),
+                              label: t('Current Password', 'كلمة السر الحالية', 'Mot de passe actuel'),
                               visible: _oldVisible,
                               onToggle: () => setState(() => _oldVisible = !_oldVisible),
                               isDark: isDark, scale: scale,
@@ -218,7 +219,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             // New password
                             _passField(
                               ctrl: _newPassCtrl,
-                              label: _t('New Password', 'كلمة السر الجديدة', 'Nouveau mot de passe'),
+                              label: t('New Password', 'كلمة السر الجديدة', 'Nouveau mot de passe'),
                               visible: _newVisible,
                               onToggle: () => setState(() => _newVisible = !_newVisible),
                               isDark: isDark, scale: scale,
@@ -227,7 +228,7 @@ class _SettingsPageState extends State<SettingsPage> {
                             // Confirm
                             _passField(
                               ctrl: _confPassCtrl,
-                              label: _t('Confirm New Password', 'تأكيد كلمة السر', 'Confirmer le mot de passe'),
+                              label: t('Confirm New Password', 'تأكيد كلمة السر', 'Confirmer le mot de passe'),
                               visible: _confVisible,
                               onToggle: () => setState(() => _confVisible = !_confVisible),
                               isDark: isDark, scale: scale,
@@ -252,7 +253,7 @@ class _SettingsPageState extends State<SettingsPage> {
                                           child: CircularProgressIndicator(
                                               strokeWidth: 2, color: Colors.white))
                                       : Text(
-                                          _t('Update Password', 'تحديث كلمة السر', 'Mettre à jour'),
+                                          t('Update Password', 'تحديث كلمة السر', 'Mettre à jour'),
                                           style: TextStyle(
                                               color: Colors.white,
                                               fontSize: 14 * scale,
@@ -267,12 +268,12 @@ class _SettingsPageState extends State<SettingsPage> {
                         const SizedBox(height: 28),
 
                         // ── SECTION 4: Account info ────────────────
-                        _sectionTitle(_t('Account', 'الحساب', 'Compte'), Icons.person_outline_rounded, scale, isDark),
+                        _sectionTitle(t('Account', 'الحساب', 'Compte'), Icons.person_outline_rounded, scale, isDark),
                         const SizedBox(height: 14),
                         _card(isDark, child: _settingRow(
                           icon: Icons.email_outlined,
                           iconColor: _blue,
-                          label: _t('Email', 'البريد الإلكتروني', 'E-mail'),
+                          label: t('Email', 'البريد الإلكتروني', 'E-mail'),
                           sub: FirebaseAuth.instance.currentUser?.email ?? '--',
                           scale: scale,
                           isDark: isDark,
@@ -392,14 +393,14 @@ class _SettingsPageState extends State<SettingsPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                _t('Font Size', 'حجم الخط', 'Taille du texte'),
+                t('Font Size', 'حجم الخط', 'Taille du texte'),
                 style: TextStyle(
                     fontSize: 14 * scale,
                     fontWeight: FontWeight.w600,
                     color: isDark ? Colors.white : const Color(0xFF0D1117)),
               ),
               Text(
-                _t('Adjust text size across the app',
+                t('Adjust text size across the app',
                    'تحكم في حجم النص في التطبيق',
                    'Ajustez la taille du texte dans l\'app'),
                 style: TextStyle(fontSize: 11.5 * scale, color: Colors.grey.shade500),
@@ -424,14 +425,19 @@ class _SettingsPageState extends State<SettingsPage> {
         Row(children: [
           const Text('A', style: TextStyle(fontSize: 12, color: Colors.grey)),
           Expanded(
-            child: Slider(
-              value: scale,
-              min: 0.8,
-              max: 1.4,
-              divisions: 6,
-              activeColor: Colors.purple,
-              inactiveColor: Colors.purple.withOpacity(0.15),
-              onChanged: (v) => setDoctorFontScale(v),
+            child: ValueListenableBuilder<double>(
+              valueListenable: doctorFontScale,
+              builder: (context, scaleValue, _) {
+                return Slider(
+                  value: scaleValue,
+                  min: 0.8,
+                  max: 1.5,
+                  divisions: 7,
+                  activeColor: Colors.purple,
+                  inactiveColor: Colors.purple.withOpacity(0.15),
+                  onChanged: (newScale) => setDoctorFontScale(newScale),
+                );
+              },
             ),
           ),
           const Text('A', style: TextStyle(fontSize: 18, color: Colors.grey)),
@@ -439,7 +445,7 @@ class _SettingsPageState extends State<SettingsPage> {
         // مثال نصي
         Center(
           child: Text(
-            _t('Preview text', 'نص تجريبي', 'Texte de prévisualisation'),
+            t('Preview text', 'نص تجريبي', 'Texte de prévisualisation'),
             style: TextStyle(
               fontSize: 14 * scale,
               color: isDark ? Colors.white60 : Colors.grey.shade600,

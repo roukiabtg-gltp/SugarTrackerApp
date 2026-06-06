@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../doctor_settings_notifier.dart';
 
 class NotesPage extends StatefulWidget {
   const NotesPage({super.key});
@@ -83,16 +84,16 @@ class _NotesPageState extends State<NotesPage> {
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('Notes', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                    SizedBox(height: 4),
-                    Text('Personal clinical notes', style: TextStyle(color: Colors.grey, fontSize: 15)),
+                  children: [
+                    Text(t('Notes','الملاحظات','Notes'), style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                    const SizedBox(height: 4),
+                    Text(t('Personal clinical notes','ملاحظات سريرية شخصية','Notes cliniques personnelles'), style: const TextStyle(color: Colors.grey, fontSize: 15)),
                   ],
                 ),
                 ElevatedButton.icon(
                   onPressed: () => setState(() => _isAdding = !_isAdding),
                   icon: Icon(_isAdding ? Icons.close : Icons.add, color: Colors.white),
-                  label: Text(_isAdding ? 'Cancel' : 'New Note', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  label: Text(_isAdding ? t('Cancel', 'إلغاء', 'Annuler') : t('New Note', 'ملاحظة جديدة', 'Nouvelle note'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF3B82F6),
                     padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -119,12 +120,12 @@ class _NotesPageState extends State<NotesPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Add New Note', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                    Text(t('Add New Note', 'أضف ملاحظة جديدة', 'Ajouter une nouvelle note'), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
                     const SizedBox(height: 16),
                     TextField(
                       controller: _titleController,
                       decoration: InputDecoration(
-                        labelText: 'Title',
+                        labelText: t('Title', 'العنوان', 'Titre'),
                         prefixIcon: const Icon(Icons.title, color: Color(0xFF3B82F6)),
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                         filled: true,
@@ -136,7 +137,7 @@ class _NotesPageState extends State<NotesPage> {
                       controller: _contentController,
                       maxLines: 4,
                       decoration: InputDecoration(
-                        labelText: 'Content',
+                        labelText: t('Content', 'المحتوى', 'Contenu'),
                         alignLabelWithHint: true,
                         prefixIcon: const Padding(
                           padding: EdgeInsets.only(bottom: 60),
@@ -179,7 +180,7 @@ class _NotesPageState extends State<NotesPage> {
                           elevation: 0,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                         ),
-                        child: const Text('Save Note', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                        child: Text(t('Save Note', 'حفظ الملاحظة', 'Enregistrer la note'), style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   ],
@@ -201,8 +202,8 @@ class _NotesPageState extends State<NotesPage> {
                         children: [
                           Icon(Icons.notes, size: 64, color: Colors.grey.shade300),
                           const SizedBox(height: 12),
-                          const Text('No notes yet', style: TextStyle(color: Colors.grey, fontSize: 16)),
-                          const Text('Click "New Note" to add your first note', style: TextStyle(color: Colors.grey, fontSize: 13)),
+                          Text(t('No notes yet', 'لا توجد ملاحظات بعد', 'Aucune note pour le moment'), style: const TextStyle(color: Colors.grey, fontSize: 16)),
+                          Text(t('Click "New Note" to add your first note', 'اضغط "ملاحظة جديدة" لإضافة أول ملاحظة', 'Cliquez sur "Nouvelle note" pour ajouter votre première note'), style: const TextStyle(color: Colors.grey, fontSize: 13)),
                         ],
                       ),
                     );

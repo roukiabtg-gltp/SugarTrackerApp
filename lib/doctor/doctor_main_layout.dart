@@ -27,7 +27,7 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     const ProfessionalDashboard(),
     const PatientsPage(),
     AppointmentsPage(),
-    const AlertsPage(),
+    AlertsPage(doctorId: FirebaseAuth.instance.currentUser!.uid),
     const NotesPage(),
     const ReportsPage(),
     const AdministrationPage(),
@@ -35,124 +35,158 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     const DoctorProfilePage(),          // ← index 8
   ];
 
-  // ── ترجمة بسيطة بدون package ─────────────────────────────
-  String _t(String en, String ar, String fr) {
-    final lang = doctorLocale.value.languageCode;
-    if (lang == 'ar') return ar;
-    if (lang == 'fr') return fr;
-    return en;
-  }
-
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: doctorThemeMode,
-      builder: (_, mode, __) {
-        return ValueListenableBuilder<Locale>(
-          valueListenable: doctorLocale,
-          builder: (_, locale, __) {
-            return ValueListenableBuilder<double>(
-              valueListenable: doctorFontScale,
-              builder: (_, scale, __) {
-                final isDark = mode == ThemeMode.dark;
-                final sidebarBg = isDark ? const Color(0xFF13151E) : Colors.white;
-                final divColor  = isDark ? Colors.white12 : Colors.grey.shade200;
+    return ValueListenableBuilder<Locale>(
+      valueListenable: doctorLocale,
+      builder: (context, locale, _) {
+        final isDark = doctorThemeMode.value == ThemeMode.dark;
+        final scale = doctorFontScale.value;
+        final sidebarBg = isDark ? const Color(0xFF13151E) : Colors.white;
+        final divColor = isDark ? Colors.white12 : Colors.grey.shade200;
+        final lang = locale.languageCode;
+        final isRtl = lang == 'ar';
 
-                return Scaffold(
-                  body: Row(children: [
-
-                    // ══ SIDEBAR ══════════════════════════════════════════
-                    Container(
-                      width: 260,
-                      color: sidebarBg,
-                      child: Column(children: [
-
-                        // Logo
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
-                          child: Row(children: [
-                            Icon(Icons.monitor_heart,
-                                color: const Color(0xFF1882FF), size: 32),
-                            const SizedBox(width: 12),
-                            Text('GlucoLink',
-                                style: TextStyle(
-                                  fontSize: 20 * scale,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDark ? Colors.white : const Color(0xFF0D1117),
-                                )),
-                          ]),
+        return Directionality(
+          textDirection: isRtl ? TextDirection.rtl : TextDirection.ltr,
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(t('Dashboard', 'لوحة التحكم', 'Tableau de bord')),
+              backgroundColor: isDark ? const Color(0xFF0F172A) : Colors.white,
+              foregroundColor: isDark ? Colors.white : Colors.black,
+              elevation: 0,
+            ),
+            drawer: Drawer(
+              child: SafeArea(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    DrawerHeader(
+                      decoration: BoxDecoration(
+                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFE5E7EB),
+                      ),
+                      child: Text(
+                        t('Menu', 'القائمة', 'Menu'),
+                        style: TextStyle(
+                          fontSize: 18 * scale,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black,
                         ),
-
-                        const SizedBox(height: 16),
-
-                        // ── Nav items (scrollable) ─────────────────
-                        Expanded(
-                          child: SingleChildScrollView(
-                            child: Column(children: [
-                              _item(0, Icons.grid_view_rounded,             _t('Dashboard',      'لوحة التحكم',   'Tableau de bord'), isDark, scale),
-                              _item(1, Icons.people_outline_rounded,        _t('Patients',       'المرضى',        'Patients'),        isDark, scale),
-                              _item(2, Icons.calendar_today_outlined,       _t('Appointments',   'المواعيد',      'Rendez-vous'),     isDark, scale),
-                              _item(3, Icons.notifications_none_rounded,    _t('Alerts',         'التنبيهات',     'Alertes'),         isDark, scale),
-                              _item(4, Icons.notes_outlined,                _t('Notes',          'الملاحظات',     'Notes'),           isDark, scale),
-                              _item(5, Icons.bar_chart_outlined,            _t('Reports',        'التقارير',      'Rapports'),        isDark, scale),
-                              _item(6, Icons.admin_panel_settings_outlined, _t('Administration', 'الإدارة',       'Administration'),  isDark, scale),
-                              Divider(color: divColor, height: 24, indent: 16, endIndent: 16),
-                              _item(7, Icons.settings_outlined,             _t('Settings',       'الإعدادات',     'Paramètres'),      isDark, scale),
-                              const SizedBox(height: 12),
-                            ]),
-                          ),
-                        ),
-
-                        // Doctor profile
-                        _buildDoctorProfile(isDark, scale),
-
-                        // Logout
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                          child: ListTile(
-                            shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            leading: const Icon(Icons.logout,
-                                color: Colors.redAccent),
-                            title: Text(
-                              _t('Sign out', 'تسجيل الخروج', 'Déconnexion'),
-                              style: TextStyle(
-                                  color: Colors.redAccent,
-                                  fontSize: 14 * scale),
-                            ),
-                            onTap: () async {
-                              await FirebaseAuth.instance.signOut();
-                              if (mounted) {
-                                Navigator.pushAndRemoveUntil(
-                                  context,
-                                  MaterialPageRoute(
-                                      builder: (_) => const LoginDesktop()),
-                                  (_) => false,
-                                );
-                              }
-                            },
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                      ]),
-                    ),
-
-                    VerticalDivider(thickness: 1, width: 1, color: divColor),
-
-                    // ══ CONTENT ══════════════════════════════════════════
-                    Expanded(
-                      child: ColoredBox(
-                        color: isDark
-                            ? const Color(0xFF0F1117)
-                            : const Color(0xFFF8F9FE),
-                        child: _pages[_selectedIndex],
                       ),
                     ),
-                  ]),
-                );
-              },
-            );
-          },
+                    Expanded(
+                      child: ListView(
+                        padding: EdgeInsets.zero,
+                        children: [
+                          _item(0, Icons.grid_view_rounded, t('Dashboard', 'لوحة التحكم', 'Tableau de bord'), isDark, scale),
+                          _item(1, Icons.people_outline_rounded, t('Patients', 'المرضى', 'Patients'), isDark, scale),
+                          _item(2, Icons.calendar_today_outlined, t('Appointments', 'المواعيد', 'Rendez-vous'), isDark, scale),
+                          _item(3, Icons.notifications_none_rounded, t('Alerts', 'التنبيهات', 'Alertes'), isDark, scale),
+                          _item(4, Icons.notes_outlined, t('Notes', 'الملاحظات', 'Notes'), isDark, scale),
+                          _item(5, Icons.bar_chart_outlined, t('Reports', 'التقارير', 'Rapports'), isDark, scale),
+                          _item(6, Icons.admin_panel_settings_outlined, t('Administration', 'الإدارة', 'Administration'), isDark, scale),
+                          _item(7, Icons.settings_outlined, t('Settings', 'الإعدادات', 'Paramètres'), isDark, scale),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            body: Row(children: [
+
+              // ══ SIDEBAR ══════════════════════════════════════════
+              Container(
+                width: 260,
+                color: sidebarBg,
+                child: Column(children: [
+
+                  // Logo
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                    child: Row(children: [
+                      Icon(Icons.monitor_heart,
+                          color: const Color(0xFF1882FF), size: 32),
+                      const SizedBox(width: 12),
+                      Text(t('GlucoLink','جلوكولينك','GlucoLink'),
+                          style: TextStyle(
+                            fontSize: 20 * scale,
+                            fontWeight: FontWeight.bold,
+                            color: isDark ? Colors.white : const Color(0xFF0D1117),
+                          )),
+                    ]),
+                  ),
+
+                  const SizedBox(height: 16),
+
+                  // ── Nav items (scrollable) ─────────────────
+                  Expanded(
+                    child: SingleChildScrollView(
+                      child: Column(children: [
+                        _item(0, Icons.grid_view_rounded,             t('Dashboard',      'لوحة التحكم',   'Tableau de bord'), isDark, scale),
+                        _item(1, Icons.people_outline_rounded,        t('Patients',       'المرضى',        'Patients'),        isDark, scale),
+                        _item(2, Icons.calendar_today_outlined,       t('Appointments',   'المواعيد',      'Rendez-vous'),     isDark, scale),
+                        _item(3, Icons.notifications_none_rounded,    t('Alerts',         'التنبيهات',     'Alertes'),         isDark, scale),
+                        _item(4, Icons.notes_outlined,                t('Notes',          'الملاحظات',     'Notes'),           isDark, scale),
+                        _item(5, Icons.bar_chart_outlined,            t('Reports',        'التقارير',      'Rapports'),        isDark, scale),
+                        _item(6, Icons.admin_panel_settings_outlined, t('Administration', 'الإدارة',       'Administration'),  isDark, scale),
+                        Divider(color: divColor, height: 24, indent: 16, endIndent: 16),
+                        _item(7, Icons.settings_outlined,             t('Settings',       'الإعدادات',     'Paramètres'),      isDark, scale),
+                        const SizedBox(height: 12),
+                      ]),
+                    ),
+                  ),
+
+                  // Doctor profile
+                  _buildDoctorProfile(isDark, scale),
+
+                  // Logout
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    child: ListTile(
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
+                      leading: const Icon(Icons.logout,
+                          color: Colors.redAccent),
+                      title: Text(
+                        t('Sign out', 'تسجيل الخروج', 'Déconnexion'),
+                        style: TextStyle(
+                            color: Colors.redAccent,
+                            fontSize: 14 * scale),
+                      ),
+                      onTap: () async {
+                        await FirebaseAuth.instance.signOut();
+                        if (mounted) {
+                          Navigator.pushAndRemoveUntil(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const LoginDesktop()),
+                            (_) => false,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                ]),
+              ),
+
+              VerticalDivider(thickness: 1, width: 1, color: divColor),
+
+              // ══ CONTENT ══════════════════════════════════════════
+              Expanded(
+                child: ColoredBox(
+                  color: isDark
+                      ? const Color(0xFF0F1117)
+                      : const Color(0xFFF8F9FE),
+                  child: IndexedStack(
+                    index: _selectedIndex,
+                    children: _pages,
+                  ),
+                ),
+              ),
+            ]),
+          ),
         );
       },
     );

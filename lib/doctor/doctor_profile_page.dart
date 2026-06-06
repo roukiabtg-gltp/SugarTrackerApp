@@ -173,18 +173,18 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
 
                       // ── Header ──────────────────────────────────────
                       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-                        Text('My Profile', style: TextStyle(
+                        Text(t('My Profile','ملفّي','Mon profil'), style: TextStyle(
                           fontSize: 26 * scale, fontWeight: FontWeight.w700,
                           color: dark ? Colors.white : const Color(0xFF0D1117))),
                         _editing
                             ? Row(children: [
-                                _outBtn('Cancel', () {
+                                _outBtn(t('Cancel','إلغاء','Annuler'), () {
                                   setState(() => _editing = false);
                                   _load();
                                 }),
                                 const SizedBox(width: 10),
                                 _fillBtn(
-                                  label: _saving ? 'Saving...' : 'Save Changes',
+                                  label: _saving ? t('Saving...','جاري الحفظ...','Enregistrement...') : t('Save Changes','حفظ التغييرات','Enregistrer les modifications'),
                                   icon: _saving
                                       ? const SizedBox(width: 15, height: 15,
                                           child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -192,7 +192,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
                                   onTap: _saving ? null : _save, scale: scale),
                               ])
                             : _fillBtn(
-                                label: 'Edit Profile',
+                                label: t('Edit Profile','تعديل الملف','Modifier le profil'),
                                 icon: const Icon(Icons.edit_outlined, size: 16, color: Colors.white),
                                 onTap: () => setState(() => _editing = true),
                                 scale: scale),
@@ -314,7 +314,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
           decoration: BoxDecoration(
               color: _blue.withOpacity(0.08),
               borderRadius: BorderRadius.circular(8)),
-          child: Text('ID: ${_idProfCtrl.text}',
+          child: Text('${t('ID','المعرف','ID')}: ${_idProfCtrl.text}',
               style: TextStyle(fontSize: 11 * scale, color: _blue, fontWeight: FontWeight.w600))),
       ],
 
@@ -394,7 +394,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
   Widget _bioCard(bool dark, double scale) => _card(dark, child: Padding(
     padding: const EdgeInsets.all(22),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _cardTitle('About Me', Icons.notes_outlined, dark, scale),
+      _cardTitle(t('About Me','نبذة عني','À propos de moi'), Icons.notes_outlined, dark, scale),
       const SizedBox(height: 14),
       _editing
           ? TextField(
@@ -403,8 +403,8 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
                   color: dark ? Colors.white : const Color(0xFF0D1117)),
               decoration: _decor('Write a short bio...', dark))
           : Text(
-              _bioCtrl.text.isEmpty
-                  ? 'No bio yet. Tap Edit Profile to add one.'
+                _bioCtrl.text.isEmpty
+                  ? t('No bio yet. Tap Edit Profile to add one.','لا توجد نبذة بعد. انقر "تعديل الملف" لإضافة واحدة.','Pas de bio pour le moment. Appuyez sur "Modifier le profil" pour en ajouter une.')
                   : _bioCtrl.text,
               style: TextStyle(
                 fontSize: 13 * scale, height: 1.65,

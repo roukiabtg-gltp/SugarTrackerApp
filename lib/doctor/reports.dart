@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:intl/intl.dart';
+import '../doctor_settings_notifier.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key});
@@ -11,289 +12,356 @@ class ReportsPage extends StatefulWidget {
 }
 
 class _ReportsPageState extends State<ReportsPage> {
-  final _db = FirebaseDatabase.instance.ref();
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final String? doctorId = FirebaseAuth.instance.currentUser?.uid;
-  String _selectedFilter = 'All';
-  final List<String> _filters = ['All', '24 Hours', '7 Days', '30 Days'];
 
-  String _fmt(dynamic raw) {
-    if (raw == null) return '--';
+  late Stream<QuerySnapshot> _appointmentsStream;
+
+  String? _selectedPatient;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _appointmentsStream = _firestore
+        .collection('appointments')
+        .where('doctorId', isEqualTo: doctorId)
+        .snapshots();
+  }
+
+  DateTime? _parseRawDate(dynamic rawDate) {
+    if (rawDate == null) return null;
     try {
-      int? ms = raw is int ? raw : int.tryParse(raw.toString());
-      DateTime dt = ms != null
-          ? DateTime.fromMillisecondsSinceEpoch(ms > 9999999999 ? ms : ms * 1000)
-          : DateTime.parse(raw.toString());
-      return DateFormat('dd MMM yyyy  HH:mm').format(dt);
+      return DateTime.parse(rawDate.toString().trim());
     } catch (_) {
-      return raw.toString();
+      return null;
     }
   }
 
-  bool _inRange(dynamic raw) {
-    if (_selectedFilter == 'All') return true;
-    if (raw == null) return false;
-    try {
-      int? ms = raw is int ? raw : int.tryParse(raw.toString());
-      DateTime dt = ms != null
-          ? DateTime.fromMillisecondsSinceEpoch(ms > 9999999999 ? ms : ms * 1000)
-          : DateTime.parse(raw.toString());
-      final now = DateTime.now();
-      if (_selectedFilter == '24 Hours') return now.difference(dt).inHours <= 24;
-      if (_selectedFilter == '7 Days')   return now.difference(dt).inDays <= 7;
-      if (_selectedFilter == '30 Days')  return now.difference(dt).inDays <= 30;
-    } catch (_) {}
-    return false;
+  String _fmtDate(dynamic rawDate) {
+    final dt = _parseRawDate(rawDate);
+    if (dt == null) return rawDate?.toString() ?? '--';
+    return DateFormat('dd MMM yyyy', 'en').format(dt);
   }
 
-  String _statusFor(String type, dynamic val) {
-    double? v = double.tryParse(val?.toString() ?? '');
-    if (v == null) return 'Normal';
-    String t = type.toLowerCase();
-    if (t.contains('glucose') || t.contains('سكر')) {
-      if (v < 70 || v > 200) return 'Critical';
-      if (v > 140) return 'Warning';
-      return 'Normal';
-    }
-    if (t.contains('pressure') || t.contains('ضغط')) {
-      if (v > 160) return 'Critical';
-      if (v > 130) return 'Warning';
-      return 'Normal';
-    }
-    return 'Normal';
-  }
-
-  Color _statusColor(String s) {
-    return {'Critical': const Color(0xFFE05C5C), 'Warning': const Color(0xFFD4A017)}[s] ?? const Color(0xFF10B981);
-  }
-
-  Color _statusBg(String s) {
-    return {'Critical': const Color(0xFFFDE8E8), 'Warning': const Color(0xFFFFF9C4)}[s] ?? const Color(0xFFDFF5EC);
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
-      body: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // ── Header ────────────────────────────────────────────────
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      backgroundColor: theme.scaffoldBackgroundColor,
+      body: StreamBuilder<QuerySnapshot>(
+        stream: _appointmentsStream,
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)));
+          }
+
+          if (snapshot.hasError) {
+            return Center(child: Text(t('Connection error: ${snapshot.error}', 'خطأ في الاتصال: ${snapshot.error}', 'Erreur de connexion : ${snapshot.error}')));
+          }
+
+          Set<String> allPatientsSet = {};
+          if (snapshot.hasData) {
+            for (var doc in snapshot.data!.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final name = data['patientName']?.toString().trim();
+              if (name != null && name.isNotEmpty) {
+                allPatientsSet.add(name);
+              }
+            }
+          }
+          List<String> patientList = allPatientsSet.toList()..sort();
+
+          List<String> filteredPatients = patientList
+              .where((p) => p.toLowerCase().contains(_searchQuery.toLowerCase()))
+              .toList();
+
+          // تم إصلاح التعيين التلقائي هنا باستخدام WidgetsBinding لتجنب تعليق حلقة الرسم (Build Cycle) للويب
+          if (filteredPatients.isNotEmpty) {
+            if (_selectedPatient == null) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _selectedPatient = filteredPatients.first);
+              });
+            } else if (!_filteredPatientsContainsSelected(filteredPatients, _selectedPatient)) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted) setState(() => _selectedPatient = filteredPatients.first);
+              });
+            }
+          }
+
+          List<Map<String, dynamic>> patientVisits = [];
+          Map<String, int> typeFrequency = {};
+          String lastVisitStr = '--';
+
+          if (snapshot.hasData && _selectedPatient != null) {
+            for (var doc in snapshot.data!.docs) {
+              final data = doc.data() as Map<String, dynamic>;
+              final pName = data['patientName']?.toString().trim();
+
+              if (pName == _selectedPatient) {
+                final dateRaw = data['date'];
+                final timeRaw = data['time'] ?? '--:--';
+                final type = data['type']?.toString() ?? 'Consultation';
+                final dt = _parseRawDate(dateRaw);
+
+                typeFrequency[type] = (typeFrequency[type] ?? 0) + 1;
+
+                patientVisits.add({
+                  'patient': pName,
+                  'type': type,
+                  'time': timeRaw,
+                  'dateFormatted': _fmtDate(dateRaw),
+                  'rawDate': dt,
+                });
+              }
+            }
+
+            patientVisits.sort((a, b) {
+              if (a['rawDate'] == null) return 1;
+              if (b['rawDate'] == null) return -1;
+              return (b['rawDate'] as DateTime).compareTo(a['rawDate'] as DateTime);
+            });
+
+            if (patientVisits.isNotEmpty) {
+              lastVisitStr = patientVisits.first['dateFormatted'];
+            }
+          }
+
+          String mainReason = '--';
+          if (typeFrequency.isNotEmpty) {
+            mainReason = typeFrequency.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+          }
+
+          return Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('Reports', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
-                    SizedBox(height: 4),
-                    Text('All patients measurements overview', style: TextStyle(color: Colors.grey, fontSize: 15)),
+                  children: [
+                    Text(t('Patient History Report', 'تقرير تاريخ المرضى', 'Rapport historique des patients'), 
+                        style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF1E293B))),
+                    const SizedBox(height: 4),
+                    Text(t('Chronological and analytical tracking of consultations by patient', 'المتابعة الزمنية والتحليلية للاستشارات حسب المريض', 'Suivi chronologique et analytique des consultations par patient'), 
+                        style: const TextStyle(color: Colors.grey, fontSize: 15)),
                   ],
                 ),
-                // Filter buttons
+                const SizedBox(height: 32),
+
                 Row(
-                  children: _filters.map((f) {
-                    final selected = _selectedFilter == f;
-                    return Padding(
-                      padding: const EdgeInsets.only(left: 8),
-                      child: OutlinedButton(
-                        onPressed: () => setState(() => _selectedFilter = f),
-                        style: OutlinedButton.styleFrom(
-                          backgroundColor: selected ? const Color(0xFF3B82F6) : Colors.white,
-                          side: BorderSide(color: selected ? const Color(0xFF3B82F6) : Colors.grey.shade300),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  children: [
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
+                          border: Border.all(color: Colors.grey.shade200),
                         ),
-                        child: Text(f, style: TextStyle(color: selected ? Colors.white : Colors.grey, fontWeight: FontWeight.w500)),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 24),
-
-            // ── Content ────────────────────────────────────────────────
-            Expanded(
-              child: StreamBuilder(
-                stream: _db.child('users').orderByChild('doctorId').equalTo(doctorId).onValue,
-                builder: (context, AsyncSnapshot<DatabaseEvent> snap) {
-                  if (snap.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)));
-                  }
-                  if (!snap.hasData || snap.data!.snapshot.value == null) {
-                    return const Center(child: Text('No patients found', style: TextStyle(color: Colors.grey, fontSize: 16)));
-                  }
-
-                  final Map patientsRaw = snap.data!.snapshot.value as Map;
-                  final patients = patientsRaw.entries.toList();
-
-                  return StreamBuilder(
-                    stream: _db.child('measurements').onValue,
-                    builder: (context, AsyncSnapshot<DatabaseEvent> mSnap) {
-                      Map allMeas = {};
-                      if (mSnap.hasData && mSnap.data!.snapshot.value != null) {
-                        allMeas = mSnap.data!.snapshot.value as Map;
-                      }
-
-                      // Build rows
-                      List<Map<String, dynamic>> rows = [];
-                      for (var p in patients) {
-                        final pid  = p.key.toString();
-                        final info = p.value as Map;
-                        final fn   = info['first_name']?.toString() ?? '';
-                        final ln   = info['last_name']?.toString() ?? '';
-                        final name = '$fn $ln'.trim().isEmpty ? 'Unknown' : '$fn $ln'.trim();
-
-                        final measMap = allMeas[pid];
-                        if (measMap == null) continue;
-
-                        (measMap as Map).forEach((key, val) {
-                          final ts = val['timestamp'] ?? val['date'];
-                          if (!_inRange(ts)) return;
-                          final type   = val['type']?.toString() ?? val['category']?.toString() ?? 'Glucose';
-                          final value  = val['value']?.toString() ?? '--';
-                          final status = _statusFor(type, val['value']);
-                          rows.add({
-                            'patient': name,
-                            'type':    type,
-                            'value':   value,
-                            'unit':    val['unit']?.toString() ?? 'mg/dL',
-                            'status':  status,
-                            'time':    _fmt(ts),
-                            'raw_ts':  ts is int ? ts : 0,
-                          });
-                        });
-                      }
-
-                      // Sort newest first
-                      rows.sort((a, b) => (b['raw_ts'] as int).compareTo(a['raw_ts'] as int));
-
-                      // Stats
-                      int total    = rows.length;
-                      int critical = rows.where((r) => r['status'] == 'Critical').length;
-                      int warning  = rows.where((r) => r['status'] == 'Warning').length;
-                      int normal   = rows.where((r) => r['status'] == 'Normal').length;
-
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Summary cards
-                          Row(
-                            children: [
-                              _statCard('Total Readings', total.toString(), const Color(0xFF3B82F6), const Color(0xFFEFF6FF)),
-                              const SizedBox(width: 16),
-                              _statCard('Critical', critical.toString(), const Color(0xFFE05C5C), const Color(0xFFFDE8E8)),
-                              const SizedBox(width: 16),
-                              _statCard('Warning', warning.toString(), const Color(0xFFD4A017), const Color(0xFFFFF9C4)),
-                              const SizedBox(width: 16),
-                              _statCard('Normal', normal.toString(), const Color(0xFF10B981), const Color(0xFFDFF5EC)),
-                            ],
+                        child: TextField(
+                          controller: _searchController,
+                          onChanged: (value) {
+                            setState(() {
+                              _searchQuery = value.trim();
+                            });
+                          },
+                          decoration: InputDecoration(
+                            hintText: t('Search patient by name...', 'ابحث عن المريض بالاسم...', 'Rechercher un patient par nom...'),
+                            hintStyle: theme.textTheme.bodyMedium?.copyWith(color: theme.hintColor, fontSize: 14),
+                            prefixIcon: Icon(Icons.search, color: theme.colorScheme.primary, size: 20),
+                            suffixIcon: _searchQuery.isNotEmpty
+                                ? IconButton(
+                                    icon: Icon(Icons.clear, size: 16, color: theme.iconTheme.color),
+                                    onPressed: () {
+                                      _searchController.clear();
+                                      setState(() => _searchQuery = '');
+                                    },
+                                  )
+                                : null,
+                            border: InputBorder.none,
                           ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: isDark ? theme.colorScheme.surface : Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: [BoxShadow(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.02), blurRadius: 8, offset: const Offset(0, 2))],
+                          border: Border.all(color: theme.dividerColor),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: filteredPatients.contains(_selectedPatient) ? _selectedPatient : null,
+                            hint: Text(t('Select patient...', 'اختر المريض...', 'Sélectionner le patient...'), style: const TextStyle(fontSize: 14)),
+                            isExpanded: true,
+                            icon: const Icon(Icons.arrow_drop_down_circle, color: Color(0xFF3B82F6), size: 22),
+                            onChanged: (String? newValue) {
+                              if (newValue != null) {
+                                setState(() => _selectedPatient = newValue);
+                              }
+                            },
+                            items: filteredPatients.map<DropdownMenuItem<String>>((String value) {
+                              return DropdownMenuItem<String>(
+                                value: value,
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.person, size: 18, color: Color(0xFF3B82F6)),
+                                    const SizedBox(width: 10),
+                                    Text(value, style: const TextStyle(fontWeight: FontWeight.w600, color: Color(0xFF1E293B))),
+                                  ],
+                                ),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32),
 
-                          const SizedBox(height: 24),
+                if (_selectedPatient == null || patientVisits.isEmpty)
+                  Expanded(
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.folder_open, size: 64, color: theme.colorScheme.onSurface.withOpacity(0.4)),
+                          const SizedBox(height: 16),
+                          Text(
+                            t('No history available for this patient.', 'لا يوجد تاريخ متاح لهذا المريض.', 'Aucun historique disponible pour ce patient.'),
+                            style: theme.textTheme.bodyLarge?.copyWith(color: theme.textTheme.bodyMedium?.color, fontSize: 16),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                else ...[
+                  Row(
+                    children: [
+                      _statCard(t('Total Consultations', 'إجمالي الاستشارات', 'Total des consultations'), patientVisits.length.toString(), const Color(0xFF3B82F6), const Color(0xFFEFF6FF), Icons.analytics),
+                      const SizedBox(width: 16),
+                      _statCard(t('Last Visit', 'آخر زيارة', 'Dernière consultation'), lastVisitStr, const Color(0xFF10B981), const Color(0xFFDFF5EC), Icons.event_available),
+                      const SizedBox(width: 16),
+                      _statCard(t('Main Reason', 'السبب الرئيسي', 'Motif principal'), mainReason, const Color(0xFFD4A017), const Color(0xFFFFF9C4), Icons.psychology),
+                    ],
+                  ),
+                  const SizedBox(height: 32),
 
-                          // Table
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? theme.colorScheme.surface : Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [BoxShadow(color: isDark ? Colors.white10 : Colors.black.withOpacity(0.02), blurRadius: 12, offset: const Offset(0, 4))],
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        children: [
+                          Container(
+                            color: isDark ? theme.colorScheme.surfaceVariant : const Color(0xFFF8FAFC),
+                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                            child: Row(
+                              children: [
+                                Expanded(flex: 2, child: Text(t('Patient Name', 'اسم المريض', 'Nom du patient'), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 14))),
+                                Expanded(flex: 2, child: Text(t('Visit Type', 'نوع الزيارة', 'Type de visite'), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 14))),
+                                Expanded(flex: 2, child: Text(t('Date & Time', 'التاريخ والوقت', 'Date et heure'), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 14))),
+                              ],
+                            ),
+                          ),
+                          Divider(height: 1, color: theme.dividerColor),
                           Expanded(
-                            child: Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 12, offset: const Offset(0, 4))],
-                              ),
-                              child: rows.isEmpty
-                                  ? const Center(child: Text('No data in this period', style: TextStyle(color: Colors.grey, fontSize: 15)))
-                                  : ClipRRect(
-                                      borderRadius: BorderRadius.circular(16),
-                                      child: SingleChildScrollView(
-                                        child: Table(
-                                          border: TableBorder(horizontalInside: BorderSide(color: Colors.grey.shade100)),
-                                          columnWidths: const {
-                                            0: FlexColumnWidth(2.2),
-                                            1: FlexColumnWidth(1.5),
-                                            2: FlexColumnWidth(1.5),
-                                            3: FlexColumnWidth(1.3),
-                                            4: FlexColumnWidth(2.5),
-                                          },
-                                          children: [
-                                            // Header
-                                            TableRow(
-                                              decoration: BoxDecoration(color: Colors.grey.shade50),
-                                              children: ['Patient', 'Type', 'Value', 'Status', 'Date & Time']
-                                                  .map((h) => Padding(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                                                        child: Text(h, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: Colors.grey)),
-                                                      ))
-                                                  .toList(),
-                                            ),
-                                            // Rows
-                                            ...rows.map((r) => TableRow(
-                                                  children: [
-                                                    _cell(r['patient']),
-                                                    _cell(r['type']),
-                                                    _cell('${r['value']} ${r['unit']}', bold: true),
-                                                    Padding(
-                                                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                                                      child: Container(
-                                                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                                                        decoration: BoxDecoration(
-                                                          color: _statusBg(r['status']),
-                                                          borderRadius: BorderRadius.circular(20),
-                                                        ),
-                                                        child: Text(
-                                                          r['status'],
-                                                          textAlign: TextAlign.center,
-                                                          style: TextStyle(color: _statusColor(r['status']), fontSize: 12, fontWeight: FontWeight.w600),
-                                                        ),
-                                                      ),
-                                                    ),
-                                                    _cell(r['time'], muted: true),
-                                                  ],
-                                                )),
-                                          ],
-                                        ),
+                            child: ListView.separated(
+                              itemCount: patientVisits.length,
+                              separatorBuilder: (context, index) => const Divider(height: 1, color: Color(0xFFEDF2F7)),
+                              itemBuilder: (context, index) {
+                                final visit = patientVisits[index];
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 2, 
+                                        child: Text(
+                                          visit['patient'], 
+                                          style: theme.textTheme.bodyLarge?.copyWith(fontWeight: FontWeight.bold, fontSize: 14, color: theme.textTheme.bodyLarge?.color),
+                                        )
                                       ),
-                                    ),
+                                      Expanded(
+                                        flex: 2, 
+                                        child: Text(
+                                          visit['type'], 
+                                          style: theme.textTheme.bodyMedium?.copyWith(fontSize: 14, color: theme.textTheme.bodyMedium?.color),
+                                        )
+                                      ),
+                                      Expanded(
+                                        flex: 2, 
+                                        child: Text(
+                                          '${visit['dateFormatted']}  ${visit['time']}', 
+                                          style: theme.textTheme.bodyMedium?.copyWith(color: theme.textTheme.bodySmall?.color, fontSize: 14, fontWeight: FontWeight.w500)
+                                        )
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
                             ),
                           ),
                         ],
-                      );
-                    },
-                  );
-                },
-              ),
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
-          ],
-        ),
+          );
+        },
       ),
     );
   }
 
-  Widget _statCard(String label, String value, Color color, Color bg) {
+  // دالة مساعدة مضافة للحفاظ على نظافة كود الشرط أعلاه
+  bool _filteredPatientsContainsSelected(List<String> list, String? selected) {
+    return list.contains(selected);
+  }
+
+  Widget _statCard(String label, String value, Color color, Color bg, IconData icon) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(14)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 6),
-          Text(value, style: TextStyle(color: color, fontSize: 28, fontWeight: FontWeight.bold)),
-        ]),
-      ),
-    );
-  }
-
-  Widget _cell(String text, {bool bold = false, bool muted = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      child: Text(
-        text,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
-          color: muted ? Colors.grey : const Color(0xFF1E293B),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(color: color, fontSize: 13, fontWeight: FontWeight.w500), overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 6),
+                  Text(value, style: TextStyle(color: color, fontSize: 20, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            Icon(icon, color: color.withOpacity(0.25), size: 32),
+          ],
         ),
       ),
     );

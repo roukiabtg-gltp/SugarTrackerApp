@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
+import '../doctor_settings_notifier.dart';
 import 'analytics_view.dart';
 
 class PatientProfilePage extends StatefulWidget {
@@ -83,10 +84,10 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               ms > 9999999999 ? ms : ms * 1000)
           : DateTime.parse(raw.toString());
       Duration d = DateTime.now().difference(dt);
-      if (d.inMinutes < 1) return "Just now";
-      if (d.inMinutes < 60) return "${d.inMinutes} min ago";
-      if (d.inHours < 24) return "${d.inHours} hr ago";
-      return "${d.inDays} day(s) ago";
+      if (d.inMinutes < 1) return t('Just now','الآن','À l’instant');
+      if (d.inMinutes < 60) return t('${d.inMinutes} min ago','قبل ${d.inMinutes} دقيقة','il y a ${d.inMinutes} min');
+      if (d.inHours < 24) return t('${d.inHours} hr ago','قبل ${d.inHours} ساعة','il y a ${d.inHours} h');
+      return t('${d.inDays} day(s) ago','قبل ${d.inDays} يوم','il y a ${d.inDays} j');
     } catch (_) {
       return "--";
     }
@@ -168,11 +169,16 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
       "normal": [const Color(0xFFDCFCE7), const Color(0xFF16A34A)],
     };
     final c = colors[s.toLowerCase()] ?? colors["normal"]!;
+    final label = s == "Critical"
+        ? t('Critical','حرج','Critique')
+        : s == "Warning"
+            ? t('Warning','تحذير','Avertissement')
+            : t('Normal','طبيعي','Normal');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration:
           BoxDecoration(color: c[0], borderRadius: BorderRadius.circular(20)),
-      child: Text(s.toLowerCase(),
+      child: Text(label,
           style: TextStyle(
               color: c[1], fontSize: 12, fontWeight: FontWeight.w600)),
     );
@@ -202,8 +208,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
         title: TextButton.icon(
           onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.chevron_left, color: Colors.grey),
-          label: const Text("Back to Patients",
-              style: TextStyle(color: Colors.grey, fontSize: 15)),
+          label: Text(t('Back to Patients','العودة إلى المرضى','Retour aux patients'),
+              style: const TextStyle(color: Colors.grey, fontSize: 15)),
         ),
       ),
       body: StreamBuilder(
@@ -264,7 +270,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                   alertTime = "--";
               if (meas != null && meas.isNotEmpty) {
                 var latest = _sorted(meas).first.value;
-                alertVal = "${latest['value'] ?? '--'} mg/dL";
+                alertVal = "${latest['value'] ?? '--'} g/L";
                 alertType = latest['category']?.toString() ??
                     latest['type']?.toString() ??
                     "Glucose";
@@ -310,11 +316,11 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                               horizontal: 20),
                           child: Row(
                             children: [
-                              "Measurements",
-                              "Analytics",
-                              "Notes",
-                              "Prescription",
-                              "Messages"
+                              t('Measurements','القياسات','Mesures'),
+                              t('Analytics','التحليلات','Analytique'),
+                              t('Notes','الملاحظات','Notes'),
+                              t('Prescription','الوصفة الطبية','Ordonnance'),
+                              t('Messages','الرسائل','Messages')
                             ].asMap().entries.map((e) {
                               bool active = _tab == e.key;
                               return GestureDetector(
@@ -437,7 +443,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                 ]),
                 const SizedBox(height: 8),
                 Row(children: [
-                  Text("Age: $age",
+                  Text("${t('Age','العمر','Âge')}: $age",
                       style: const TextStyle(
                           color: Colors.blueGrey, fontSize: 13)),
                   const Padding(
@@ -445,7 +451,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                       child: Text("•",
                           style:
                               TextStyle(color: Colors.blueGrey))),
-                  Text("Blood: $blood",
+                  Text("${t('Blood','الدم','Sang')}: $blood",
                       style: const TextStyle(
                           color: Colors.blueGrey, fontSize: 13)),
                 ]),
@@ -488,8 +494,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               padding: const EdgeInsets.symmetric(
                   horizontal: 18, vertical: 10),
             ),
-            child: const Text("Edit Profile",
-                style: TextStyle(
+            child: Text(t('Edit Profile','تعديل الملف الشخصي','Modifier le profil'),
+                style: const TextStyle(
                     color: Color(0xFF2D3142), fontSize: 13)),
           ),
           const SizedBox(height: 10),
@@ -503,9 +509,9 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                   horizontal: 18, vertical: 10),
               elevation: 0,
             ),
-            child: const Text("Add Measurement",
+            child: Text(t('Add Measurement','إضافة قياس','Ajouter une mesure'),
                 style:
-                    TextStyle(color: Colors.white, fontSize: 13)),
+                    const TextStyle(color: Colors.white, fontSize: 13)),
           ),
         ]),
       ]),
@@ -553,8 +559,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
 
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-        const Text("Recent Measurements",
-            style: TextStyle(
+        Text(t('Recent Measurements','أحدث القياسات','Dernières mesures'),
+            style: const TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.bold,
                 color: Color(0xFF2D3142))),
@@ -568,18 +574,18 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                 horizontal: 20, vertical: 10),
             elevation: 0,
           ),
-          child: const Text("Add Measurement",
+          child: Text(t('Add Measurement','إضافة قياس','Ajouter une mesure'),
               style:
-                  TextStyle(color: Colors.white, fontSize: 14)),
+                  const TextStyle(color: Colors.white, fontSize: 14)),
         ),
       ]),
       const SizedBox(height: 20),
       if (list.isEmpty)
-        const Center(
+        Center(
             child: Padding(
-                padding: EdgeInsets.all(40),
-                child: Text("No measurements yet",
-                    style: TextStyle(color: Colors.grey))))
+                padding: const EdgeInsets.all(40),
+                child: Text(t('No measurements yet','لا توجد قياسات حتى الآن','Aucune mesure pour le moment'),
+                    style: const TextStyle(color: Colors.grey))))
       else
         ClipRRect(
           borderRadius: BorderRadius.circular(10),
@@ -600,12 +606,12 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                 decoration:
                     BoxDecoration(color: Colors.grey.shade50),
                 children: [
-                  "Date & Time",
-                  "Type",
-                  "Value",
-                  "Status",
-                  "Source",
-                  "Actions"
+                  t('Date & Time','التاريخ والوقت','Date et heure'),
+                  t('Type','النوع','Type'),
+                  t('Value','القيمة','Valeur'),
+                  t('Status','الحالة','Statut'),
+                  t('Source','المصدر','Source'),
+                  t('Actions','الإجراءات','Actions')
                 ]
                     .map((h) => Padding(
                           padding: const EdgeInsets.symmetric(
@@ -649,7 +655,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                     padding: const EdgeInsets.symmetric(
                         horizontal: 12, vertical: 14),
                     child: Text(
-                        "${v['value'] ?? '--'} ${v['unit'] ?? 'mg/dL'}",
+                        "${v['value'] ?? '--'} ${v['unit'] ?? 'g/L'}",
                         style: const TextStyle(
                             fontWeight: FontWeight.w600,
                             fontSize: 14,
@@ -674,7 +680,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                             BorderRadius.circular(20),
                       ),
                       child: Text(
-                          isDoctor ? "Doctor" : "Device",
+                          isDoctor ? t('Doctor','الطبيب','Docteur') : t('Device','الجهاز','Appareil'),
                           textAlign: TextAlign.center,
                           style: TextStyle(
                               color: isDoctor
@@ -738,7 +744,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
         shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16)),
         title: Text(
-            measId == null ? "Add Measurement" : "Edit Measurement"),
+            measId == null ? t('Add Measurement','إضافة قياس','Ajouter une mesure') : t('Edit Measurement','تعديل القياس','Modifier la mesure')),
         content: StatefulBuilder(
           builder: (_, dialogState) => SizedBox(
             width: 350,
@@ -746,7 +752,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               DropdownButtonFormField<String>(
                 value: _type,
                 decoration: InputDecoration(
-                  labelText: "Measurement Type",
+                  labelText: t('Measurement Type','نوع القياس','Type de mesure'),
                   border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(10)),
                 ),
@@ -757,8 +763,19 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                   "Weight",
                   "Temperature"
                 ]
-                    .map((e) =>
-                        DropdownMenuItem(value: e, child: Text(e)))
+                    .map((e) => DropdownMenuItem(
+                        value: e,
+                        child: Text(
+                          e == 'Glucose'
+                              ? t('Glucose','الجلوكوز','Glycémie')
+                              : e == 'Blood Pressure'
+                                  ? t('Blood Pressure','ضغط الدم','Pression artérielle')
+                                  : e == 'Heart Rate'
+                                      ? t('Heart Rate','معدل ضربات القلب','Fréquence cardiaque')
+                                      : e == 'Weight'
+                                          ? t('Weight','الوزن','Poids')
+                                          : t('Temperature','درجة الحرارة','Température'),
+                        )))
                     .toList(),
                 onChanged: (v) {
                   if (v != null) dialogState(() => _type = v);
@@ -769,9 +786,9 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                 controller: _ctrl,
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
-                  labelText: "Value",
+                  labelText: t('Value','القيمة','Valeur'),
                   suffixText: _type == "Glucose"
-                      ? "mg/dL"
+                      ? "g/L"
                       : _type == "Blood Pressure"
                           ? "mmHg"
                           : _type == "Heart Rate"
@@ -789,20 +806,20 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: const Text("Cancel")),
+              child: Text(t('Cancel','إلغاء','Annuler'))),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF3B82F6)),
             onPressed: () async {
               if (_ctrl.text.trim().isEmpty) return;
               final unit = {
-                    "Glucose": "mg/dL",
+                    "Glucose": "g/L",
                     "Blood Pressure": "mmHg",
                     "Heart Rate": "bpm",
                     "Weight": "kg",
                     "Temperature": "°C",
                   }[_type] ??
-                  "mg/dL";
+                  "g/L";
               final data = {
                 'value': _ctrl.text.trim(),
                 'type': _type,
@@ -829,7 +846,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               }
               if (mounted) Navigator.pop(ctx);
             },
-            child: const Text("Save",
+            child: Text(t('Save','حفظ','Enregistrer'),
                 style: TextStyle(color: Colors.white)),
           ),
         ],
@@ -841,8 +858,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
 
   Widget _notesTab() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text("Clinical Notes",
-          style: TextStyle(
+      Text(t('Clinical Notes','ملاحظات سريرية','Notes cliniques'),
+          style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF2D3142))),
@@ -854,7 +871,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
             controller: _noteController,
             maxLines: 3,
             decoration: InputDecoration(
-              hintText: "Write a clinical note...",
+              hintText: t('Write a clinical note...','اكتب ملاحظة سريرية...','Écrivez une note clinique...'),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(
@@ -878,8 +895,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12))),
           icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text("Add Note",
-              style: TextStyle(color: Colors.white)),
+          label: Text(t('Add Note','إضافة ملاحظة','Ajouter une note'),
+              style: const TextStyle(color: Colors.white)),
         ),
       ]),
       const SizedBox(height: 20),
@@ -891,11 +908,11 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snap.hasData || snap.data!.snapshot.value == null) {
-            return const Center(
+            return Center(
                 child: Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Text("No notes yet",
-                        style: TextStyle(color: Colors.grey))));
+                    padding: const EdgeInsets.all(30),
+                    child: Text(t('No notes yet','لا توجد ملاحظات حتى الآن','Aucune note pour le moment'),
+                        style: const TextStyle(color: Colors.grey))));
           }
           final Map raw = snap.data!.snapshot.value as Map;
           final entries = raw.entries.toList()
@@ -946,8 +963,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
 
   Widget _prescriptionTab() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text("Prescriptions",
-          style: TextStyle(
+      Text(t('Prescriptions','الوصفات الطبية','Prescriptions'),
+          style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF2D3142))),
@@ -958,7 +975,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
             controller: _prescController,
             maxLines: 3,
             decoration: InputDecoration(
-              hintText: "Write prescription details...",
+              hintText: t('Write prescription details...','اكتب تفاصيل الوصفة...','Écrivez les détails de l’ordonnance...'),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(
@@ -983,8 +1000,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
                   borderRadius: BorderRadius.circular(12))),
           icon: const Icon(Icons.medical_services_outlined,
               color: Colors.white),
-          label: const Text("Add",
-              style: TextStyle(color: Colors.white)),
+          label: Text(t('Add','إضافة','Ajouter'),
+              style: const TextStyle(color: Colors.white)),
         ),
       ]),
       const SizedBox(height: 20),
@@ -998,11 +1015,11 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snap.hasData || snap.data!.snapshot.value == null) {
-            return const Center(
+            return Center(
                 child: Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Text("No prescriptions yet",
-                        style: TextStyle(color: Colors.grey))));
+                    padding: const EdgeInsets.all(30),
+                    child: Text(t('No prescriptions yet','لا توجد وصفات حتى الآن','Aucune ordonnance pour le moment'),
+                        style: const TextStyle(color: Colors.grey))));
           }
           final Map raw = snap.data!.snapshot.value as Map;
           final entries = raw.entries.toList()
@@ -1054,8 +1071,8 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
 
   Widget _messagesTab() {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text("Messages",
-          style: TextStyle(
+      Text(t('Messages','الرسائل','Messages'),
+          style: const TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
               color: Color(0xFF2D3142))),
@@ -1069,11 +1086,11 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
             return const Center(child: CircularProgressIndicator());
           }
           if (!snap.hasData || snap.data!.snapshot.value == null) {
-            return const Center(
+            return Center(
                 child: Padding(
-                    padding: EdgeInsets.all(30),
-                    child: Text("No messages yet",
-                        style: TextStyle(color: Colors.grey))));
+                    padding: const EdgeInsets.all(30),
+                    child: Text(t('No messages yet','لا توجد رسائل حتى الآن','Aucun message pour le moment'),
+                        style: const TextStyle(color: Colors.grey))));
           }
           final Map raw = snap.data!.snapshot.value as Map;
           final entries = raw.entries.toList()
@@ -1144,7 +1161,7 @@ class _PatientProfilePageState extends State<PatientProfilePage> {
           child: TextField(
             controller: _msgController,
             decoration: InputDecoration(
-              hintText: "Write a message...",
+              hintText: t('Write a message...','اكتب رسالة...','Écrivez un message...'),
               filled: true,
               fillColor: const Color(0xFFF8FAFC),
               border: OutlineInputBorder(

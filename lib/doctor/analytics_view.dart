@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:intl/intl.dart';
+import '../doctor_settings_notifier.dart';
 
 class AnalyticsView extends StatefulWidget {
   final String patientId;
@@ -18,283 +19,176 @@ class AnalyticsView extends StatefulWidget {
 }
 
 class _AnalyticsViewState extends State<AnalyticsView> {
-  String selectedFilter = '7 DAYS';
-  bool showChart = true;
+  String _selectedFilter = 'all'; // الفلتر الافتراضي: الكل
+  bool _showChart = true;
 
-  final List<String> filters = [
-    '24 HOURS',
-    '7 DAYS',
-    '30 DAYS',
-  ];
-
-  // ─────────────────────────────────────────────────────────────
-  // REALTIME DATABASE STREAM
-  // ─────────────────────────────────────────────────────────────
-
-  Stream<DatabaseEvent> getMeasurementsStream() {
-    return FirebaseDatabase.instance
-        .ref()
-        .child('measurements')
-        .child(widget.patientId)
-        .onValue;
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // DATA CLEANER & PARSER (CLEAN REGEX)
-  // ─────────────────────────────────────────────────────────────
-
+  // دوال فحص القيم وتحويلها بأمان كما يفعل تطبيق المريض
   double _parseValue(dynamic rawValue) {
     if (rawValue == null) return 0.0;
-    
-    // إذا كانت القيمة رقماً بالفعل (int أو double)
     if (rawValue is num) return rawValue.toDouble();
-
     try {
       String cleanStr = rawValue.toString().trim();
-      // استخراج الأرقام والنقاط العشرية فقط (تتخلص من mg/dL أو الفراغات)
       cleanStr = cleanStr.replaceAll(RegExp(r'[^0-9.]'), '');
-      
       return double.tryParse(cleanStr) ?? 0.0;
     } catch (_) {
       return 0.0;
     }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // DATE PARSER
-  // ─────────────────────────────────────────────────────────────
-
   DateTime? _parseDate(dynamic raw) {
     if (raw == null) return null;
-
     try {
       if (raw is int) {
-        return DateTime.fromMillisecondsSinceEpoch(
-          raw > 9999999999 ? raw : raw * 1000,
-        );
+        return DateTime.fromMillisecondsSinceEpoch(raw > 9999999999 ? raw : raw * 1000);
       }
-
       int? ms = int.tryParse(raw.toString());
-
       if (ms != null) {
-        return DateTime.fromMillisecondsSinceEpoch(
-          ms > 9999999999 ? ms : ms * 1000,
-        );
+        return DateTime.fromMillisecondsSinceEpoch(ms > 9999999999 ? ms : ms * 1000);
       }
-
       return DateTime.parse(raw.toString());
     } catch (_) {
       return null;
     }
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // FILTER DATA
-  // ─────────────────────────────────────────────────────────────
-
-  List<MapEntry<String, dynamic>> _filterData(
-    Map<dynamic, dynamic> raw,
-  ) {
-    final now = DateTime.now();
-    Duration duration;
-
-    switch (selectedFilter) {
-      case '24 HOURS':
-        duration = const Duration(hours: 24);
-        break;
-      case '30 DAYS':
-        duration = const Duration(days: 30);
-        break;
-      default:
-        duration = const Duration(days: 7);
-    }
-
-    final threshold = now.subtract(duration);
-
-    final entries = raw.entries
-        .map(
-          (e) => MapEntry<String, dynamic>(
-            e.key.toString(),
-            Map<String, dynamic>.from(e.value as Map),
-          ),
-        )
-        .where((e) {
-      final dt = _parseDate(
-        e.value['timestamp'] ?? e.value['date'],
-      );
-      return dt != null && dt.isAfter(threshold);
-    }).toList();
-
-    // SORT BY DATE
-    entries.sort((a, b) {
-      final da = _parseDate(
-        a.value['timestamp'] ?? a.value['date'],
-      );
-      final db = _parseDate(
-        b.value['timestamp'] ?? b.value['date'],
-      );
-      return (da ?? DateTime(0)).compareTo(db ?? DateTime(0));
-    });
-
-    return entries;
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // STATISTICS
-  // ─────────────────────────────────────────────────────────────
-
-  double _avg(List<double> values) {
-    if (values.isEmpty) return 0;
-    return values.reduce((a, b) => a + b) / values.length;
-  }
-
-  double _min(List<double> values) {
-    if (values.isEmpty) return 0;
-    return values.reduce((a, b) => a < b ? a : b);
-  }
-
-  double _max(List<double> values) {
-    if (values.isEmpty) return 0;
-    return values.reduce((a, b) => a > b ? a : b);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // POINT COLOR
-  // ─────────────────────────────────────────────────────────────
-
-  Color _dotColor(double value) {
-    if (value < 70) return const Color(0xFF3B82F6);
-    if (value > 200) return const Color(0xFFEF4444);
-    if (value > 140) return const Color(0xFFF59E0B);
-    return const Color(0xFF10B981);
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // BUILD
-  // ─────────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
+    final String unit = "mg/dL";
+
+    final texts = {
+      'avg': t('Average','المتوسط','Moyenne'),
+      'max': t('Max','أعلى قياس','Maximum'),
+      'min': t('Min','أقل قياس','Minimum'),
+      'total': t('Total','الإجمالي','Total'),
+      'empty': t('No data available for this period','لا توجد بيانات لهذه الفترة','Aucune donnée pour cette période'),
+      'day': t('Day','يوم','Jour'),
+      'week': t('Week','أسبوع','Semaine'),
+      'month': t('Month','شهر','Mois'),
+      'all': t('All','الكل','Tout'),
+    };
+
     return StreamBuilder<DatabaseEvent>(
-      stream: getMeasurementsStream(),
+      stream: FirebaseDatabase.instance.ref("measurements/${widget.patientId}").onValue,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+          return const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)));
         }
 
         if (!snapshot.hasData || snapshot.data!.snapshot.value == null) {
-          return _emptyState("No measurements found");
+          return _buildEmptyState(texts['empty']!);
         }
 
-        final rawMap = snapshot.data!.snapshot.value as Map;
-        final filtered = _filterData(rawMap);
+        Map<dynamic, dynamic> data = snapshot.data!.snapshot.value as Map;
+        
+        // تحويل كافة البيانات المتاحة إلى قائمة مجهزة بالتواريخ أولاً لضمان دقة الفلترة
+        List<MapEntry<dynamic, dynamic>> allEntries = data.entries.toList();
+        List<Map<String, dynamic>> parsedEntries = [];
 
-        // تم التعديل هنا لـاستخدام الدالة الذكية الجديدة _parseValue
-        final values = filtered
-            .map((e) => _parseValue(e.value['value']))
-            .toList();
+        for (var entry in allEntries) {
+          if (entry.value == null) continue;
+          final dateRaw = entry.value['timestamp'] ?? entry.value['date'] ?? entry.value['dateTime'] ?? entry.value['time'];
+          DateTime? recordDate = _parseDate(dateRaw);
+          if (recordDate != null) {
+            parsedEntries.add({
+              'entry': entry,
+              'date': recordDate,
+            });
+          }
+        }
 
-        final average = _avg(values);
-        final minimum = _min(values);
-        final maximum = _max(values);
+        if (parsedEntries.isEmpty) return _buildEmptyState(texts['empty']!);
 
-        final inRange = values.where((v) => v >= 70 && v <= 140).length;
+        // ترتيب البيانات زمنياً من الأقدم للأحدث
+        parsedEntries.sort((a, b) => (a['date'] as DateTime).compareTo(b['date'] as DateTime));
+
+        // تحديد نقطة المرجعية الزمنية (تاريخ آخر قياس فعلي متوفر في حساب المريض بدلاً من تاريخ اليوم الحالي الصارم)
+        DateTime referenceDate = parsedEntries.last['date'] as DateTime;
+
+        // تصفية البيانات برمجياً بناءً على الفلتر المختار
+        var filteredList = parsedEntries.where((item) {
+          DateTime itemDate = item['date'] as DateTime;
+
+          if (_selectedFilter == 'day') {
+            // نفس اليوم الخاص بآخر قياس تم تسجيله
+            return itemDate.year == referenceDate.year && 
+                   itemDate.month == referenceDate.month && 
+                   itemDate.day == referenceDate.day;
+          } else if (_selectedFilter == 'week') {
+            // خلال آخر 7 أيام قبل تاريخ آخر قياس
+            return itemDate.isAfter(referenceDate.subtract(const Duration(days: 7)));
+          } else if (_selectedFilter == 'month') {
+            // نفس الشهر والسنة الخاص بآخر قياس
+            return itemDate.year == referenceDate.year && 
+                   itemDate.month == referenceDate.month;
+          }
+          return true; // في حال اختيار 'all' يعرض كل البيانات
+        }).toList();
+
+        if (filteredList.isEmpty) return _buildEmptyState(texts['empty']!);
+
+        // بناء نقاط الرسم البياني وجدول البيانات من القائمة المصفاة
+        List<FlSpot> spots = [];
+        List<Map<String, dynamic>> tableData = [];
+
+        for (int i = 0; i < filteredList.length; i++) {
+          final v = filteredList[i]['entry'].value;
+          double rawVal = _parseValue(v['value'] ?? v['Value']);
+          
+          // معادلة تحويل القياسات من نظامك
+          double displayedVal = rawVal < 5.0 ? rawVal * 100 : rawVal;
+          DateTime dt = filteredList[i]['date'] as DateTime;
+
+          spots.add(FlSpot(i.toDouble(), displayedVal));
+          tableData.add({'val': displayedVal, 'time': dt.millisecondsSinceEpoch});
+        }
 
         return SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ───────────────── HEADER
+              // مفاتيح الفلترة العلوية المستقرة
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        "Patient Analytics",
-                        style: TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.patientName,
-                        style: TextStyle(color: Colors.grey.shade600),
-                      ),
-                    ],
+                  Text(
+                    t('Patient Analytics','تحليلات المريض','Analytique du patient'),
+                    style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                   ),
-                  Row(
-                    children: [
-                      _viewToggleBtn(Icons.show_chart, true, "Chart"),
-                      const SizedBox(width: 10),
-                      _viewToggleBtn(Icons.table_chart, false, "Table"),
-                    ],
-                  ),
+                  IconButton(
+                    icon: Icon(_showChart ? Icons.table_chart_rounded : Icons.show_chart_rounded, color: const Color(0xFF2563EB)),
+                    onPressed: () => setState(() => _showChart = !_showChart),
+                  )
                 ],
+              ),
+              
+              const SizedBox(height: 16),
+
+              // شريط الفلاتر الموحد
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(color: Colors.grey.withOpacity(0.08), borderRadius: BorderRadius.circular(12)),
+                child: Row(
+                  children: [
+                    _buildFilterButton(texts['day']!, 'day'),
+                    _buildFilterButton(texts['week']!, 'week'),
+                    _buildFilterButton(texts['month']!, 'month'),
+                    _buildFilterButton(texts['all']!, 'all'),
+                  ],
+                ),
               ),
 
               const SizedBox(height: 24),
 
-              // ───────────────── FILTERS
-              Wrap(
-                spacing: 10,
-                children: filters.map((filter) {
-                  final selected = selectedFilter == filter;
-                  return GestureDetector(
-                    onTap: () => setState(() => selectedFilter = filter),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 250),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 10,
-                  ),
-                      decoration: BoxDecoration(
-                        color: selected ? const Color(0xFF2563EB) : Colors.white,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: selected ? const Color(0xFF2563EB) : Colors.grey.shade300,
-                        ),
-                      ),
-                      child: Text(
-                        filter,
-                        style: TextStyle(
-                          color: selected ? Colors.white : Colors.grey,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
-              ),
+              // شبكة كروت عرض الإحصائيات (الحساب التلقائي اللحظي المصفى)
+              _buildStatsGrid(spots, texts, unit),
 
               const SizedBox(height: 24),
 
-              // ───────────────── STATS
-              Row(
-                children: [
-                  _statCard("Average", "${average.toStringAsFixed(1)} mg/dL", Icons.analytics, const Color(0xFF2563EB)),
-                  const SizedBox(width: 12),
-                  _statCard("Minimum", "${minimum.toStringAsFixed(1)} mg/dL", Icons.arrow_downward, const Color(0xFF10B981)),
-                  const SizedBox(width: 12),
-                  _statCard("Maximum", "${maximum.toStringAsFixed(1)} mg/dL", Icons.arrow_upward, const Color(0xFFEF4444)),
-                  const SizedBox(width: 12),
-                  _statCard("In Range", "$inRange / ${filtered.length}", Icons.check_circle, const Color(0xFF8B5CF6)),
-                ],
-              ),
-
-              const SizedBox(height: 28),
-
-              // ───────────────── CHART / TABLE
-              filtered.isEmpty
-                  ? _emptyState("No data for selected period")
-                  : showChart
-                      ? _buildChart(filtered, values) // تم تمرير قيم المعالجة مسبقاً لتحسين الأداء
-                      : _buildTable(filtered),
-
-              const SizedBox(height: 30),
+              // العرض الرسومي أو الجدول البياني بعد الفلترة والتحويل
+              _showChart 
+                  ? _buildChart(spots, tableData, unit) 
+                  : _buildTable(tableData, unit),
             ],
           ),
         );
@@ -302,358 +196,173 @@ class _AnalyticsViewState extends State<AnalyticsView> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────
-  // CHART
-  // ─────────────────────────────────────────────────────────────
-
-  Widget _buildChart(
-    List<MapEntry<String, dynamic>> entries,
-    List<double> parsedValues,
-  ) {
-    final spots = <FlSpot>[];
-    final labels = <String>[];
-
-    for (int i = 0; i < entries.length; i++) {
-      final data = entries[i].value;
-      final value = parsedValues[i]; // استخدام القيمة النظيفة مباشرة
-
-      final dt = _parseDate(data['timestamp'] ?? data['date']);
-
-      spots.add(FlSpot(i.toDouble(), value));
-      labels.add(dt != null ? DateFormat('dd/MM\nHH:mm').format(dt) : '');
-    }
-
-    final maxValue = parsedValues.isEmpty
-        ? 250.0
-        : parsedValues.reduce((a, b) => a > b ? a : b);
-
-    return Container(
-      height: 480,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 18,
-            offset: const Offset(0, 6),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                "Blood Glucose Trend",
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEFF6FF),
-                  borderRadius: BorderRadius.circular(30),
-                ),
-                child: Text(
-                  "${entries.length} Measurements",
-                  style: const TextStyle(
-                    color: Color(0xFF2563EB),
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          Wrap(
-            spacing: 18,
-            runSpacing: 8,
-            children: [
-              _legendItem(const Color(0xFF10B981), "Normal"),
-              _legendItem(const Color(0xFFF59E0B), "Warning"),
-              _legendItem(const Color(0xFFEF4444), "Critical"),
-              _legendItem(const Color(0xFF3B82F6), "Low"),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Expanded(
-            child: LineChart(
-              LineChartData(
-                minY: 40,
-                maxY: maxValue < 250 ? 250 : maxValue + 30,
-                clipData: const FlClipData.all(),
-                gridData: FlGridData(
-                  show: true,
-                  horizontalInterval: 20,
-                  verticalInterval: 1,
-                  getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.shade200, strokeWidth: 1),
-                  getDrawingVerticalLine: (value) => FlLine(color: Colors.grey.shade100, strokeWidth: 1),
-                ),
-                rangeAnnotations: RangeAnnotations(
-                  horizontalRangeAnnotations: [
-                    HorizontalRangeAnnotation(
-                      y1: 70,
-                      y2: 140,
-                      color: Colors.green.withOpacity(0.08),
-                    ),
-                  ],
-                ),
-                titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
-                  leftTitles: AxisTitles(
-                    axisNameWidget: const Padding(
-                      padding: EdgeInsets.only(bottom: 8),
-                      child: Text("mg/dL", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 45,
-                      interval: 20,
-                      getTitlesWidget: (value, meta) => Text(
-                        value.toInt().toString(),
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ),
-                  ),
-                  bottomTitles: AxisTitles(
-                    axisNameWidget: const Padding(
-                      padding: EdgeInsets.only(top: 10),
-                      child: Text("Timeline", style: TextStyle(fontWeight: FontWeight.bold)),
-                    ),
-                    sideTitles: SideTitles(
-                      showTitles: true,
-                      reservedSize: 60,
-                      interval: entries.length > 8 ? (entries.length / 6).ceilToDouble() : 1,
-                      getTitlesWidget: (value, meta) {
-                        final index = value.toInt();
-                        if (index < 0 || index >= labels.length) return const SizedBox();
-                        return Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            labels[index],
-                            textAlign: TextAlign.center,
-                            style: const TextStyle(fontSize: 9, color: Colors.grey),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                ),
-                borderData: FlBorderData(show: true, border: Border.all(color: Colors.grey.shade300)),
-                lineTouchData: LineTouchData(
-                  handleBuiltInTouches: true,
-                  touchTooltipData: LineTouchTooltipData(
-                    tooltipRoundedRadius: 12,
-                    getTooltipColor: (_) => const Color(0xFF111827),
-                    getTooltipItems: (spotsTouched) {
-                      return spotsTouched.map((spot) {
-                        String state = "Normal";
-                        if (spot.y < 70) {
-                          state = "Low";
-                        } else if (spot.y > 200) {
-                          state = "Critical";
-                        } else if (spot.y > 140) {
-                          state = "Warning";
-                        }
-                        return LineTooltipItem(
-                          "${spot.y.toStringAsFixed(1)} mg/dL\n$state",
-                          const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                        );
-                      }).toList();
-                    },
-                  ),
-                ),
-                lineBarsData: [
-                  LineChartBarData(
-                    spots: spots,
-                    isCurved: false,
-                    color: const Color(0xFF2563EB),
-                    barWidth: 3,
-                    isStrokeCapRound: true,
-                    belowBarData: BarAreaData(
-                      show: true,
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          const Color(0xFF2563EB).withOpacity(0.2),
-                          const Color(0xFF2563EB).withOpacity(0.01),
-                        ],
-                      ),
-                    ),
-                    dotData: FlDotData(
-                      show: true,
-                      getDotPainter: (spot, percent, barData, index) {
-                        final value = parsedValues[index];
-                        return FlDotCirclePainter(
-                          radius: 5,
-                          color: _dotColor(value),
-                          strokeWidth: 2,
-                          strokeColor: Colors.white,
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // TABLE
-  // ─────────────────────────────────────────────────────────────
-
-  Widget _buildTable(List<MapEntry<String, dynamic>> entries) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columns: const [
-            DataColumn(label: Text("Date")),
-            DataColumn(label: Text("Value")),
-            DataColumn(label: Text("Status")),
-            DataColumn(label: Text("Source")),
-          ],
-          rows: entries.map((e) {
-            final data = e.value;
-            final value = _parseValue(data['value']); // استخدام الدالة الذكية
-
-            final dt = _parseDate(data['timestamp'] ?? data['date']);
-            final date = dt != null ? DateFormat('dd/MM/yyyy HH:mm').format(dt) : '--';
-            final isDoctor = data['doctor_added'] == true;
-
-            String status = "Normal";
-            Color color = const Color(0xFF10B981);
-
-            if (value < 70) {
-              status = "Low";
-              color = const Color(0xFF3B82F6);
-            } else if (value > 200) {
-              status = "Critical";
-              color = const Color(0xFFEF4444);
-            } else if (value > 140) {
-              status = "Warning";
-              color = const Color(0xFFF59E0B);
-            }
-
-            return DataRow(
-              cells: [
-                DataCell(Text(date)),
-                DataCell(Text("${value.toStringAsFixed(1)} mg/dL")),
-                DataCell(
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                    decoration: BoxDecoration(
-                      color: color.withOpacity(0.12),
-                      borderRadius: BorderRadius.circular(30),
-                    ),
-                    child: Text(
-                      status,
-                      style: TextStyle(color: color, fontWeight: FontWeight.bold),
-                    ),
-                  ),
-                ),
-                DataCell(Text(isDoctor ? "Doctor" : "Device")),
-              ],
-            );
-          }).toList(),
-        ),
-      ),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // HELPERS
-  // ─────────────────────────────────────────────────────────────
-
-  Widget _viewToggleBtn(IconData icon, bool chart, String tooltip) {
-    final active = showChart == chart;
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: () => setState(() => showChart = chart),
-        borderRadius: BorderRadius.circular(10),
+  Widget _buildFilterButton(String label, String value) {
+    bool isSelected = _selectedFilter == value;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedFilter = value),
         child: Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            color: active ? const Color(0xFFEFF6FF) : Colors.transparent,
+            color: isSelected ? const Color(0xFF2563EB) : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: active ? const Color(0xFF2563EB) : Colors.grey),
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(color: isSelected ? Colors.white : Colors.grey.shade600, fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _statCard(String title, String value, IconData icon, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.08),
-          borderRadius: BorderRadius.circular(18),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  Widget _buildStatsGrid(List<FlSpot> spots, Map<String, String> texts, String unit) {
+    double sum = spots.map((s) => s.y).reduce((a, b) => a + b);
+    double avg = sum / spots.length;
+    double maxV = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    double minV = spots.map((s) => s.y).reduce((a, b) => a < b ? a : b);
+
+    return Column(
+      children: [
+        Row(
           children: [
-            Icon(icon, color: color),
-            const SizedBox(height: 10),
-            Text(
-              value,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-                color: color,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
-            ),
+            _statBox(texts['avg']!, avg.toStringAsFixed(1), unit, const Color(0xFF2563EB)),
+            const SizedBox(width: 12),
+            _statBox(texts['total']!, spots.length.toString(), "", const Color(0xFFF59E0B)),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _legendItem(Color color, String text) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            _statBox(texts['max']!, maxV.toStringAsFixed(1), unit, const Color(0xFFEF4444)),
+            const SizedBox(width: 12),
+            _statBox(texts['min']!, minV.toStringAsFixed(1), unit, const Color(0xFF10B981)),
+          ],
         ),
-        const SizedBox(width: 6),
-        Text(text, style: const TextStyle(fontSize: 12, color: Colors.grey)),
       ],
     );
   }
 
-  Widget _emptyState(String text) {
+  Widget _statBox(String label, String val, String unit, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withOpacity(0.15)),
+        ),
+        child: Column(
+          children: [
+            Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade600, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 6),
+            Text("$val $unit".trim(), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildChart(List<FlSpot> spots, List<Map<String, dynamic>> tableData, String unit) {
+    final maxValue = spots.map((s) => s.y).reduce((a, b) => a > b ? a : b);
+    return Container(
+      height: 280,
+      padding: const EdgeInsets.fromLTRB(10, 20, 20, 10),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
+      ),
+      child: LineChart(
+        LineChartData(
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              getTooltipColor: (touchedSpot) => Colors.white.withOpacity(0.95),
+              getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                return touchedSpots.map((LineBarSpot touchedSpot) {
+                  int index = touchedSpot.x.toInt();
+                  if (index >= tableData.length || index < 0) return null;
+                  final DateTime date = DateTime.fromMillisecondsSinceEpoch(tableData[index]['time']);
+                  final String formattedTime = "${date.day}/${date.month} ${date.hour}:${date.minute.toString().padLeft(2, '0')}";
+                  return LineTooltipItem(
+                    "$formattedTime\n",
+                    const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 11),
+                    children: [
+                      TextSpan(
+                        text: "${touchedSpot.y.toStringAsFixed(1)} $unit",
+                        style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold, fontSize: 13),
+                      ),
+                    ],
+                  );
+                }).toList();
+              },
+            ),
+          ),
+          gridData: const FlGridData(show: false),
+          titlesData: const FlTitlesData(
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 35)),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)), 
+          ),
+          borderData: FlBorderData(show: false),
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              color: const Color(0xFF2563EB),
+              barWidth: 4,
+              dotData: FlDotData(
+                show: true,
+                getDotPainter: (spot, percent, barData, index) => FlDotCirclePainter(
+                  radius: 4,
+                  color: const Color(0xFF2563EB),
+                  strokeColor: Colors.white,
+                  strokeWidth: 2,
+                ),
+              ),
+              belowBarData: BarAreaData(show: true, color: const Color(0xFF2563EB).withOpacity(0.08)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTable(List<Map<String, dynamic>> data, String unit) {
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      child: DataTable(
+        columnSpacing: 20,
+        columns: [
+          DataColumn(label: Text(t('Date','التاريخ','Date'), style: const TextStyle(fontWeight: FontWeight.bold))),
+          DataColumn(label: Text('${t('Value','القيمة','Valeur')} ($unit)', style: const TextStyle(fontWeight: FontWeight.bold))),
+        ],
+        rows: data.reversed.take(20).map((e) {
+          DateTime dt = DateTime.fromMillisecondsSinceEpoch(e['time']);
+          String formattedDate = "${dt.day}/${dt.month} ${dt.hour}:${dt.minute.toString().padLeft(2, '0')}";
+          return DataRow(cells: [
+            DataCell(Text(formattedDate)),
+            DataCell(Text(e['val'].toStringAsFixed(1), style: const TextStyle(fontWeight: FontWeight.bold, color: Color(0xFF2563EB)))),
+          ]);
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(String msg) {
     return SizedBox(
       height: 300,
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.bar_chart, size: 60, color: Colors.grey.shade300),
-            const SizedBox(height: 14),
-            Text(text, style: const TextStyle(color: Colors.grey, fontSize: 14)),
+            Icon(Icons.analytics_outlined, size: 60, color: Colors.grey.shade300),
+            const SizedBox(height: 12),
+            Text(msg, style: const TextStyle(fontSize: 14, color: Colors.grey), textAlign: TextAlign.center),
           ],
         ),
       ),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'patient_profile_page.dart';
+import '../doctor_settings_notifier.dart';
 
 class PatientsPage extends StatefulWidget {
   const PatientsPage({super.key});
@@ -142,6 +143,16 @@ Widget _statusChip(String s) {
     ),
   );
 }
+  String _statusLabel(String value) {
+    switch (value) {
+      case 'All Status': return t('All Status', 'كل الحالات', 'Tous les statuts');
+      case 'Critical': return t('Critical', 'حرج', 'Critique');
+      case 'Warning': return t('Warning', 'تحذير', 'Avertissement');
+      case 'Normal': return t('Normal', 'طبيعي', 'Normal');
+      default: return value;
+    }
+  }
+
   Widget _chip(String s) {
     final Map<String, List<Color>> colors = {
       "Critical": [const Color(0xFFFDE8E8), const Color(0xFFE05C5C)],
@@ -165,7 +176,7 @@ Widget _statusChip(String s) {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text("Patients", style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+            Text(t('Patients', 'المرضى', 'Patients'), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
             const SizedBox(height: 24),
             Row(children: [
               Expanded(
@@ -180,7 +191,7 @@ Widget _statusChip(String s) {
                     Expanded(child: TextField(
                       onChanged: (v) => setState(() => searchQuery = v.toLowerCase()),
                       decoration: InputDecoration(
-                        hintText: "Search patients...",
+                        hintText: t('Search patients...', 'ابحث عن المرضى...', 'Rechercher des patients...'),
                         hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
                         border: InputBorder.none, isDense: true,
                       ),
@@ -198,7 +209,7 @@ Widget _statusChip(String s) {
                     value: selectedStatus,
                     style: const TextStyle(fontSize: 14, color: Color(0xFF2D3142)),
                     items: ["All Status", "Critical", "Warning", "Normal"]
-                        .map((e) => DropdownMenuItem(value: e, child: Text(e))).toList(),
+                        .map((e) => DropdownMenuItem(value: e, child: Text(_statusLabel(e)))).toList(),
                     onChanged: (v) => setState(() => selectedStatus = v!),
                   ),
                 ),
@@ -210,7 +221,7 @@ Widget _statusChip(String s) {
                 child: TextButton.icon(
                   onPressed: () {},
                   icon: Icon(Icons.tune, color: Colors.grey.shade700, size: 18),
-                  label: Text("Filters", style: TextStyle(color: Colors.grey.shade700)),
+                  label: Text(t('Filters', 'الفلاتر', 'Filtres'), style: TextStyle(color: Colors.grey.shade700)),
                 ),
               ),
             ]),
@@ -225,14 +236,14 @@ Widget _statusChip(String s) {
                 child: Column(children: [
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                    child: Row(children: const [
-                      Expanded(flex: 3, child: Text("Patient Name", style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 1, child: Text("Age", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text("Status", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text("Condition", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text("Last Measurement", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text("Value", textAlign: TextAlign.center, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text("Actions", textAlign: TextAlign.right, style: TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                    child: Row(children: [
+                      Expanded(flex: 3, child: Text(t('Patient Name', 'اسم المريض', 'Nom du patient'), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      Expanded(flex: 1, child: Text(t('Age', 'العمر', 'Âge'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t('Status', 'الحالة', 'Statut'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t('Condition', 'الحالة الصحية', 'Condition'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t('Last Measurement', 'آخر قياس', 'Dernière mesure'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t('Value', 'القيمة', 'Valeur'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      Expanded(flex: 2, child: Text(t('Actions', 'إجراءات', 'Actions'), textAlign: TextAlign.right, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
                     ]),
                   ),
                   const Divider(height: 1, color: Color(0xFFF0F0F0)),
@@ -254,7 +265,7 @@ Widget _statusChip(String s) {
           return const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)));
         }
         if (!snap.hasData || snap.data!.snapshot.value == null) {
-          return const Center(child: Text("No patients found", style: TextStyle(color: Colors.grey)));
+          return Center(child: Text(t('No patients found', 'لا يوجد مرضى', 'Aucun patient trouvé'), style: const TextStyle(color: Colors.grey)));
         }
         Map users = snap.data!.snapshot.value as Map;
         var entries = users.entries.toList();
@@ -314,7 +325,7 @@ Widget _statusChip(String s) {
                         child: TextButton(
                           onPressed: () => Navigator.push(context, MaterialPageRoute(
                             builder: (_) => PatientProfilePage(patientId: pid, patientName: name))),
-                          child: const Text("View Details >", style: TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w600, fontSize: 14)),
+                          child: Text(t('View Details >', 'عرض التفاصيل >', 'Voir les détails >'), style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w600, fontSize: 14)),
                         ),
                       )),
                     ]),
