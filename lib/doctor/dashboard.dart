@@ -11,7 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as fst;
 import 'package:intl/intl.dart';
-import 'patient_profile_page.dart';
+import 'patient_profile_pageee.dart';
 import '../doctor_settings_notifier.dart';
 
 class ProfessionalDashboard extends StatefulWidget {

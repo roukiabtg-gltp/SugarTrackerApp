@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'patient_profile_page.dart';
+import 'patient_profile_pageee.dart';
 import '../doctor_settings_notifier.dart';
 
 class PatientsPage extends StatefulWidget {
@@ -15,158 +15,171 @@ class _PatientsPageState extends State<PatientsPage> {
   final String? doctorId = FirebaseAuth.instance.currentUser?.uid;
   String searchQuery = "", selectedStatus = "All Status";
 
-   String _age(String? s) {
-  if (s == null || s.isEmpty) return "--";
-  try {
-    // 1. تنظيف النص وتبديل / بـ -
-    String cleanDate = s.trim().replaceAll('/', '-');
-    
-    // 2. تقسيم التاريخ بناءً على الفاصل -
-    List<String> parts = cleanDate.split('-');
-    DateTime birthDate;
-
-    // 3. التحقق من الترتيب: إذا كان الجزء الأول يتكون من رقمين أو رقم (يوم)
-    if (parts.length == 3) {
-      if (parts[0].length < 4) {
-        // ترتيب البيانات القادمة من Firebase (7/12/2005) هو يوم/شهر/سنة
-        // نحوله إلى سنة-شهر-يوم ليقبله DateTime.parse
-        String year = parts[2];
-        String month = parts[1].padLeft(2, '0');
-        String day = parts[0].padLeft(2, '0');
-        birthDate = DateTime.parse("$year-$month-$day");
-      } else {
-        // إذا كان مخزناً بالأصل سنة-شهر-يوم
-        birthDate = DateTime.parse(cleanDate);
-      }
-    } else {
+  // ── Age ───────────────────────────────────────────────────────────────
+  String _age(String? s) {
+    if (s == null || s.isEmpty) return "--";
+    try {
+      String c = s.trim().replaceAll('/', '-');
+      List<String> p = c.split('-');
+      if (p.length != 3) return "--";
+      DateTime b = p[0].length < 4
+          ? DateTime.parse(
+              "${p[2]}-${p[1].padLeft(2, '0')}-${p[0].padLeft(2, '0')}")
+          : DateTime.parse(c);
+      int age = DateTime.now().year - b.year;
+      final now = DateTime.now();
+      if (now.month < b.month ||
+          (now.month == b.month && now.day < b.day)) age--;
+      return age >= 0 ? age.toString() : "--";
+    } catch (_) {
       return "--";
     }
-
-    // 4. حساب الفرق بين الآن وتاريخ الميلاد
-    DateTime now = DateTime.now();
-    int age = now.year - birthDate.year;
-    
-    // تقليل السنة إذا لم يأتِ يوم ميلاده بعد في السنة الحالية
-    if (now.month < birthDate.month || (now.month == birthDate.month && now.day < birthDate.day)) {
-      age--;
-    }
-    
-    return age >= 0 ? age.toString() : "--";
-  } catch (e) {
-    debugPrint("خطأ نهائي في المعالجة: $s => $e");
-    return "--";
   }
-}
 
+  // ── Time Ago ──────────────────────────────────────────────────────────
   String _ago(dynamic raw) {
     if (raw == null) return "--";
     try {
-      DateTime dt;
       int? ms = raw is int ? raw : int.tryParse(raw.toString());
-      if (ms != null) {
-        dt = DateTime.fromMillisecondsSinceEpoch(ms > 9999999999 ? ms : ms * 1000);
-      } else {
-        dt = DateTime.parse(raw.toString());
-      }
+      DateTime dt = ms != null
+          ? DateTime.fromMillisecondsSinceEpoch(
+              ms > 9999999999 ? ms : ms * 1000)
+          : DateTime.parse(raw.toString());
       Duration d = DateTime.now().difference(dt);
-      if (d.inMinutes < 1) return "Just now";
-      if (d.inMinutes < 60) return "${d.inMinutes} min ago";
-      if (d.inHours < 24) return "${d.inHours} hr ago";
-      return "${d.inDays} day(s) ago";
-    } catch (_) { return "--"; }
-  }
-
-  // 1. تحسين منطق الحالة (Status Logic) مع دعم الكلمات العربية من الصورة
-String _getStatus(String type, dynamic val) {
-  double? v = double.tryParse(val?.toString() ?? "");
-  if (v == null) return "Normal";
-  String t = type.toLowerCase();
-
-  // فحص السكر (Glucose)
-  if (t.contains("glucose") || t.contains("سكر") || t.contains("أكل")) {
-    if (v < 70) return "Warning"; // انخفاض
-    if (v > 200) return "Critical"; 
-    if (v > 140) return "Warning";
-    return "Normal";
-  }
-  // فحص الضغط (Pressure) - التعامل مع الضغط الانقباضي كمثال
-  if (t.contains("pressure") || t.contains("ضغط")) {
-    if (v > 160) return "Critical";
-    if (v > 130) return "Warning";
-    return "Normal";
-  }
-  return "Normal";
-}
-
-// 2. تحديث قائمة القياسات لاستبعاد الزيارات
-List<MapEntry> _getFilteredMeasurements(Map m) {
-  var list = m.entries.where((e) {
-    String type = (e.value['type'] ?? e.value['category'] ?? "").toString().toLowerCase();
-    return !type.contains("زيارة"); // حذف أي سجل يحتوي على كلمة زيارة
-  }).toList();
-
-  list.sort((a, b) {
-    int getMs(dynamic t) {
-      if (t == null) return 0;
-      if (t is int) return t;
-      return DateTime.tryParse(t.toString())?.millisecondsSinceEpoch ?? 0;
-    }
-    return getMs(b.value['timestamp'] ?? b.value['date'])
-        .compareTo(getMs(a.value['timestamp'] ?? a.value['date']));
-  });
-  return list;
-}
-
-// 3. تحسين تصميم الـ Chip (Status Design)
-Widget _statusChip(String s) {
-  Color bg, txt;
-  switch (s.toLowerCase()) {
-    case 'critical':
-      bg = const Color(0xFFFFE4E6); txt = const Color(0xFFE11D48);
-      break;
-    case 'warning':
-      bg = const Color(0xFFFEF3C7); txt = const Color(0xFFD97706);
-      break;
-    default: // normal
-      bg = const Color(0xFFDCFCE7); txt = const Color(0xFF16A34A);
-  }
-
-  return Container(
-    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-    decoration: BoxDecoration(
-      color: bg,
-      borderRadius: BorderRadius.circular(20),
-    ),
-    child: Text(
-      s.toLowerCase(),
-      style: TextStyle(color: txt, fontSize: 12, fontWeight: FontWeight.w600),
-    ),
-  );
-}
-  String _statusLabel(String value) {
-    switch (value) {
-      case 'All Status': return t('All Status', 'كل الحالات', 'Tous les statuts');
-      case 'Critical': return t('Critical', 'حرج', 'Critique');
-      case 'Warning': return t('Warning', 'تحذير', 'Avertissement');
-      case 'Normal': return t('Normal', 'طبيعي', 'Normal');
-      default: return value;
+      if (d.inMinutes < 1) return t('Just now', 'الآن', 'À l\'instant');
+      if (d.inMinutes < 60)
+        return t('${d.inMinutes} min ago', 'قبل ${d.inMinutes} دق',
+            'il y a ${d.inMinutes} min');
+      if (d.inHours < 24)
+        return t('${d.inHours} hr ago', 'قبل ${d.inHours} س',
+            'il y a ${d.inHours} h');
+      return t('${d.inDays} day(s) ago', 'قبل ${d.inDays} يوم',
+          'il y a ${d.inDays} j');
+    } catch (_) {
+      return "--";
     }
   }
 
-  Widget _chip(String s) {
-    final Map<String, List<Color>> colors = {
-      "Critical": [const Color(0xFFFDE8E8), const Color(0xFFE05C5C)],
-      "Warning":  [const Color(0xFFFFF9C4), const Color(0xFFD4A017)],
-      "Normal":   [const Color(0xFFDFF5EC), const Color(0xFF4CAF81)],
+  // ── Status Helpers ────────────────────────────────────────────────────
+  bool _isFasting(String tp) =>
+      tp.contains("fasting") ||
+      tp.contains("صائم") ||
+      tp.contains("à jeun") ||
+      tp.contains("jeun");
+
+  bool _isPreMeal(String tp) =>
+      tp.contains("pre-meal") ||
+      tp.contains("pre meal") ||
+      tp.contains("قبل الأكل") ||
+      tp.contains("avant");
+
+  bool _isPostMeal(String tp) =>
+      tp.contains("post-meal") ||
+      tp.contains("post meal") ||
+      tp.contains("بعد الأكل") ||
+      tp.contains("après") ||
+      tp.contains("apres");
+
+  bool _isGlucose(String tp) =>
+      tp.isEmpty || // ← KEY FIX: no category = assume glucose
+      tp.contains("glucose") ||
+      tp.contains("سكر") ||
+      tp.contains("glyc") ||
+      tp.contains("random") ||
+      tp.contains("عشوائي") ||
+      _isFasting(tp) ||
+      _isPreMeal(tp) ||
+      _isPostMeal(tp);
+
+  String _glucoseStatus(String tp, double v) {
+    // Hypo / Hyper — common to all timings
+    if (v < 0.70) return "Critical"; // Hypoglycemia
+    if (v > 1.80) return "Critical"; // Hyperglycemia
+    if (v >= 1.40) return "Warning"; // Borderline high
+
+    // Below 1.40 — depends on timing
+    if (_isFasting(tp) || _isPreMeal(tp)) {
+      // Fasting normal: 0.70–1.00
+      if (v > 1.00) return "Warning";
+      return "Normal";
+    }
+
+    // Post-meal, unknown, or empty category → normal < 1.40
+    return "Normal";
+  }
+
+  String _getStatus(String type, dynamic val) {
+    // Safely parse value — trim spaces and handle comma decimal separator
+    String raw = val?.toString().trim().replaceAll(',', '.') ?? "";
+    double? v = double.tryParse(raw);
+    if (v == null) return "Normal";
+
+    String tp = type.toLowerCase().trim();
+
+    if (_isGlucose(tp)) return _glucoseStatus(tp, v);
+
+    if (tp.contains("pressure") || tp.contains("ضغط")) {
+      if (v > 160) return "Critical";
+      if (v > 130) return "Warning";
+      return "Normal";
+    }
+
+    // Unknown type with a value → treat as glucose (device default)
+    return _glucoseStatus(tp, v);
+  }
+
+  // ── Status Chip ───────────────────────────────────────────────────────
+  Widget _chip(String status) {
+    final Map<String, Map<String, Color>> theme = {
+      "Critical": {
+        "bg": const Color(0xFFFFE4E6),
+        "fg": const Color(0xFFE11D48),
+      },
+      "Warning": {
+        "bg": const Color(0xFFFEF9C3),
+        "fg": const Color(0xFFCA8A04),
+      },
+      "Normal": {
+        "bg": const Color(0xFFDCFCE7),
+        "fg": const Color(0xFF16A34A),
+      },
     };
-    var c = colors[s] ?? colors["Normal"]!;
+    final colors = theme[status] ?? theme["Normal"]!;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
-      decoration: BoxDecoration(color: c[0], borderRadius: BorderRadius.circular(30)),
-      child: Text(s.toLowerCase(), style: TextStyle(color: c[1], fontSize: 12, fontWeight: FontWeight.w500)),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+      decoration: BoxDecoration(
+        color: colors["bg"],
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        status.toLowerCase(),
+        style: TextStyle(
+          color: colors["fg"],
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.2,
+        ),
+      ),
     );
   }
 
+  // ── Status filter label ───────────────────────────────────────────────
+  String _statusLabel(String value) {
+    switch (value) {
+      case 'All Status':
+        return t('All Status', 'كل الحالات', 'Tous les statuts');
+      case 'Critical':
+        return t('Critical', 'حرج', 'Critique');
+      case 'Warning':
+        return t('Warning', 'تحذير', 'Avertissement');
+      case 'Normal':
+        return t('Normal', 'طبيعي', 'Normal');
+      default:
+        return value;
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -176,74 +189,137 @@ Widget _statusChip(String s) {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(t('Patients', 'المرضى', 'Patients'), style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: Color(0xFF2D3142))),
+            Text(
+              t('Patients', 'المرضى', 'Patients'),
+              style: const TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF2D3142)),
+            ),
             const SizedBox(height: 24),
+
+            // ── Search + Filters ─────────────────────────────────────────
             Row(children: [
               Expanded(
                 flex: 5,
                 child: Container(
-                  height: 48,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade200)),
+                  height: 44,
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
                   child: Row(children: [
-                    Icon(Icons.search, color: Colors.grey.shade400, size: 20),
+                    Icon(Icons.search,
+                        color: Colors.grey.shade400, size: 18),
                     const SizedBox(width: 10),
-                    Expanded(child: TextField(
-                      onChanged: (v) => setState(() => searchQuery = v.toLowerCase()),
-                      decoration: InputDecoration(
-                        hintText: t('Search patients...', 'ابحث عن المرضى...', 'Rechercher des patients...'),
-                        hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                        border: InputBorder.none, isDense: true,
+                    Expanded(
+                      child: TextField(
+                        onChanged: (v) =>
+                            setState(() => searchQuery = v.toLowerCase()),
+                        style: const TextStyle(fontSize: 14),
+                        decoration: InputDecoration(
+                          hintText: t(
+                              'Search patients...',
+                              'ابحث عن المرضى...',
+                              'Rechercher des patients...'),
+                          hintStyle: TextStyle(
+                              color: Colors.grey.shade400, fontSize: 14),
+                          border: InputBorder.none,
+                          isDense: true,
+                        ),
                       ),
-                    )),
+                    ),
                   ]),
                 ),
               ),
               const SizedBox(width: 12),
               Container(
-                height: 48,
+                height: 44,
                 padding: const EdgeInsets.symmetric(horizontal: 14),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade200)),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
                 child: DropdownButtonHideUnderline(
                   child: DropdownButton<String>(
                     value: selectedStatus,
-                    style: const TextStyle(fontSize: 14, color: Color(0xFF2D3142)),
+                    icon: const Icon(Icons.keyboard_arrow_down, size: 18),
+                    style: const TextStyle(
+                        fontSize: 14, color: Color(0xFF2D3142)),
                     items: ["All Status", "Critical", "Warning", "Normal"]
-                        .map((e) => DropdownMenuItem(value: e, child: Text(_statusLabel(e)))).toList(),
-                    onChanged: (v) => setState(() => selectedStatus = v!),
+                        .map((e) => DropdownMenuItem(
+                            value: e, child: Text(_statusLabel(e))))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => selectedStatus = v!),
                   ),
                 ),
               ),
               const SizedBox(width: 12),
               Container(
-                height: 48,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: Colors.grey.shade200)),
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.grey.shade200),
+                ),
                 child: TextButton.icon(
                   onPressed: () {},
-                  icon: Icon(Icons.tune, color: Colors.grey.shade700, size: 18),
-                  label: Text(t('Filters', 'الفلاتر', 'Filtres'), style: TextStyle(color: Colors.grey.shade700)),
+                  icon: Icon(Icons.tune,
+                      color: Colors.grey.shade700, size: 18),
+                  label: Text(
+                    t('Filters', 'الفلاتر', 'Filtres'),
+                    style: TextStyle(
+                        color: Colors.grey.shade700, fontSize: 14),
+                  ),
                 ),
               ),
             ]),
             const SizedBox(height: 20),
+
+            // ── Table card ───────────────────────────────────────────────
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(16),
-                  boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 20, offset: const Offset(0, 4))],
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.04),
+                      blurRadius: 20,
+                      offset: const Offset(0, 4),
+                    )
+                  ],
                 ),
                 child: Column(children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 16),
                     child: Row(children: [
-                      Expanded(flex: 3, child: Text(t('Patient Name', 'اسم المريض', 'Nom du patient'), style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 1, child: Text(t('Age', 'العمر', 'Âge'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text(t('Status', 'الحالة', 'Statut'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text(t('Condition', 'الحالة الصحية', 'Condition'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text(t('Last Measurement', 'آخر قياس', 'Dernière mesure'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text(t('Value', 'القيمة', 'Valeur'), textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
-                      Expanded(flex: 2, child: Text(t('Actions', 'إجراءات', 'Actions'), textAlign: TextAlign.right, style: const TextStyle(color: Colors.grey, fontWeight: FontWeight.w600, fontSize: 13))),
+                      _hCell(
+                          t('Patient Name', 'اسم المريض', 'Nom du patient'),
+                          flex: 3,
+                          align: TextAlign.left),
+                      _hCell(t('Age', 'العمر', 'Âge'),
+                          flex: 1, align: TextAlign.center),
+                      _hCell(t('Status', 'الحالة', 'Statut'),
+                          flex: 2, align: TextAlign.center),
+                      _hCell(
+                          t('Condition', 'الحالة الصحية', 'Condition'),
+                          flex: 2,
+                          align: TextAlign.center),
+                      _hCell(
+                          t('Last Measurement', 'آخر قياس',
+                              'Dernière mesure'),
+                          flex: 2,
+                          align: TextAlign.center),
+                      _hCell(t('Value', 'القيمة', 'Valeur'),
+                          flex: 2, align: TextAlign.center),
+                      _hCell(t('Actions', 'إجراءات', 'Actions'),
+                          flex: 2, align: TextAlign.right),
                     ]),
                   ),
                   const Divider(height: 1, color: Color(0xFFF0F0F0)),
@@ -257,77 +333,223 @@ Widget _statusChip(String s) {
     );
   }
 
+  Widget _hCell(String label,
+      {required int flex, TextAlign align = TextAlign.left}) {
+    return Expanded(
+      flex: flex,
+      child: Text(label,
+          textAlign: align,
+          style: const TextStyle(
+              color: Colors.grey,
+              fontWeight: FontWeight.w600,
+              fontSize: 13)),
+    );
+  }
+
+  // ── Patient list ──────────────────────────────────────────────────────
   Widget _buildList() {
     return StreamBuilder(
-      stream: _db.child('users').orderByChild('doctorId').equalTo(doctorId).onValue,
+      stream: _db
+          .child('users')
+          .orderByChild('doctorId')
+          .equalTo(doctorId)
+          .onValue,
       builder: (context, AsyncSnapshot<DatabaseEvent> snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF3B82F6)));
+          return const Center(
+              child: CircularProgressIndicator(
+                  color: Color(0xFF3B82F6)));
         }
         if (!snap.hasData || snap.data!.snapshot.value == null) {
-          return Center(child: Text(t('No patients found', 'لا يوجد مرضى', 'Aucun patient trouvé'), style: const TextStyle(color: Colors.grey)));
+          return Center(
+              child: Text(
+                  t('No patients found', 'لا يوجد مرضى',
+                      'Aucun patient trouvé'),
+                  style: const TextStyle(color: Colors.grey)));
         }
+
         Map users = snap.data!.snapshot.value as Map;
         var entries = users.entries.toList();
 
         return ListView.separated(
           itemCount: entries.length,
-          separatorBuilder: (_, __) => const Divider(height: 1, color: Color(0xFFF5F5F5)),
+          separatorBuilder: (_, __) =>
+              const Divider(height: 1, color: Color(0xFFF5F5F5)),
           itemBuilder: (context, i) {
             String pid = entries[i].key.toString();
             Map p = Map.from(entries[i].value);
-            String name = "${p['first_name'] ?? ''} ${p['last_name'] ?? ''}".trim();
-            if (!name.toLowerCase().contains(searchQuery)) return const SizedBox.shrink();
-            int age = int.tryParse(_age(p['birth_date']?.toString())) ?? 0;
+            String name =
+                "${p['first_name'] ?? ''} ${p['last_name'] ?? ''}"
+                    .trim();
+            if (!name.toLowerCase().contains(searchQuery)) {
+              return const SizedBox.shrink();
+            }
+            int age =
+                int.tryParse(_age(p['birth_date']?.toString())) ?? 0;
 
             return StreamBuilder(
-              stream: _db.child('measurements').child(pid).onValue,
+              stream:
+                  _db.child('measurements').child(pid).onValue,
               builder: (ctx, AsyncSnapshot<DatabaseEvent> mSnap) {
-                String lastTime = "--", lastVal = "--", status = "Normal";
-                if (mSnap.hasData && mSnap.data!.snapshot.value != null) {
-                  Map meas = mSnap.data!.snapshot.value as Map;
-                  var sorted = meas.entries.toList()..sort((a, b) {
-                    int getMs(dynamic t) {
-                      if (t == null) return 0;
-                      if (t is int) return t;
-                      int? ms = int.tryParse(t.toString());
-                      if (ms != null) return ms;
-                      try { return DateTime.parse(t.toString()).millisecondsSinceEpoch; } catch (_) { return 0; }
+                String lastTime = "--",
+                    lastVal = "--",
+                    status = "Normal";
+
+                if (mSnap.hasData &&
+                    mSnap.data!.snapshot.value != null) {
+                  Map meas =
+                      mSnap.data!.snapshot.value as Map;
+
+                  // Sort descending by timestamp
+                  var sorted = meas.entries.toList()
+                    ..sort((a, b) {
+                      int getMs(dynamic raw) {
+                        if (raw == null) return 0;
+                        if (raw is int) return raw;
+                        int? v = int.tryParse(raw.toString());
+                        if (v != null) return v;
+                        try {
+                          return DateTime.parse(raw.toString())
+                              .millisecondsSinceEpoch;
+                        } catch (_) {
+                          return 0;
+                        }
+                      }
+
+                      return getMs(b.value['timestamp'] ??
+                              b.value['date'])
+                          .compareTo(getMs(a.value['timestamp'] ??
+                              a.value['date']));
+                    });
+
+                  // Skip زيارة entries
+                  final realMeas = sorted.where((e) {
+                    String tp = (e.value['type'] ??
+                            e.value['category'] ??
+                            "")
+                        .toString()
+                        .toLowerCase();
+                    return !tp.contains("زيارة");
+                  }).toList();
+
+                  if (realMeas.isNotEmpty) {
+                    var latest = realMeas.first.value;
+                    dynamic timeRaw =
+                        latest['timestamp'] ?? latest['date'];
+                    lastTime = _ago(timeRaw);
+
+                    String unit =
+                        latest['unit']?.toString() ?? 'g/L';
+                    lastVal =
+                        "${latest['value'] ?? '--'} $unit";
+
+                    // ← category أولاً، ثم type، ثم string فاضي
+                    String type =
+                        (latest['category']?.toString() ?? "")
+                            .trim();
+                    if (type.isEmpty) {
+                      type =
+                          (latest['type']?.toString() ?? "")
+                              .trim();
                     }
-                    dynamic ta = a.value['timestamp'] ?? a.value['date'];
-                    dynamic tb = b.value['timestamp'] ?? b.value['date'];
-                    return getMs(tb).compareTo(getMs(ta));
-                  });
-                  var latest = sorted.first.value;
-                  dynamic timeRaw = latest['timestamp'] ?? latest['date'];
-                  lastTime = _ago(timeRaw);
-                  lastVal = "${latest['value'] ?? '--'} mg/dL";
-                  String type = latest['category']?.toString() ?? latest['type']?.toString() ?? "";
-                  status = _getStatus(type, latest['value']);
+
+                    status = _getStatus(type, latest['value']);
+                  }
                 }
-                if (selectedStatus != "All Status" && status != selectedStatus) return const SizedBox.shrink();
+
+                if (selectedStatus != "All Status" &&
+                    status != selectedStatus) {
+                  return const SizedBox.shrink();
+                }
 
                 return InkWell(
-                  onTap: () => Navigator.push(context, MaterialPageRoute(
-                    builder: (_) => PatientProfilePage(patientId: pid, patientName: name))),
+                  onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (_) => PatientProfilePage(
+                              patientId: pid,
+                              patientName: name))),
                   hoverColor: const Color(0xFFFAFAFF),
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 24, vertical: 18),
                     child: Row(children: [
-                      Expanded(flex: 3, child: Text(name, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15, color: Color(0xFF2D3142)))),
-                      Expanded(flex: 1, child: Text(age > 0 ? "$age" : "--", textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, color: Color(0xFF2D3142)))),
-                      Expanded(flex: 2, child: Center(child: _chip(status))),
-                      Expanded(flex: 2, child: Text(p['condition']?.toString() ?? "Diabetes", textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Color(0xFF2D3142)))),
-                      Expanded(flex: 2, child: Text(lastTime, textAlign: TextAlign.center, style: const TextStyle(fontSize: 14, color: Colors.grey))),
-                      Expanded(flex: 2, child: Text(lastVal, textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF2D3142)))),
-                      Expanded(flex: 2, child: Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(
-                            builder: (_) => PatientProfilePage(patientId: pid, patientName: name))),
-                          child: Text(t('View Details >', 'عرض التفاصيل >', 'Voir les détails >'), style: const TextStyle(color: Color(0xFF3B82F6), fontWeight: FontWeight.w600, fontSize: 14)),
+                      Expanded(
+                        flex: 3,
+                        child: Text(name,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 15,
+                                color: Color(0xFF2D3142))),
+                      ),
+                      Expanded(
+                        flex: 1,
+                        child: Text(
+                          age > 0 ? "$age" : "--",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              color: Color(0xFF2D3142)),
                         ),
-                      )),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Center(child: _chip(status)),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          p['condition']?.toString() ?? "Diabetes",
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFF2D3142)),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          lastTime,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 14, color: Colors.grey),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          lastVal,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2D3142)),
+                        ),
+                      ),
+                      Expanded(
+                        flex: 2,
+                        child: Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () => Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) => PatientProfilePage(
+                                        patientId: pid,
+                                        patientName: name))),
+                            style: TextButton.styleFrom(
+                                padding: EdgeInsets.zero),
+                            child: Text(
+                              t('View Details >', 'عرض التفاصيل >',
+                                  'Voir les détails >'),
+                              style: const TextStyle(
+                                  color: Color(0xFF3B82F6),
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 14),
+                            ),
+                          ),
+                        ),
+                      ),
                     ]),
                   ),
                 );
