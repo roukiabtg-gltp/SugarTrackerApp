@@ -739,21 +739,36 @@ class _TodayAppointments extends StatelessWidget {
             ? FirebaseFirestore.instance
                 .collection('appointments')
                 .where('doctorId', isEqualTo: doctorId)
-                .orderBy('createdAt', descending: false)
+                .where('date', isEqualTo: today)
                 .snapshots()
             : FirebaseFirestore.instance
                 .collection('appointments')
-                .orderBy('createdAt', descending: false)
+                .where('date', isEqualTo: today)
                 .snapshots(),
         builder: (_, snap) {
+          if (snap.hasError) {
+            return Center(child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text('Erreur: ${snap.error}', style: const TextStyle(color: Colors.red)),
+            ));
+          }
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
           }
 
+          // فلترة إضافية على الـ client للتأكد من اليوم (يشتغل مع أي فورمات)
           final docs = snap.data?.docs.where((d) {
             final data = d.data() as Map<String, dynamic>;
-            return (data['date'] ?? '').toString().startsWith(today);
+            final dateStr = (data['date'] ?? '').toString();
+            return dateStr == today || dateStr.startsWith(today);
           }).toList() ?? [];
+
+          // ترتيب حسب الوقت محلياً بدل orderBy (تجنب مشكلة الـ index)
+          docs.sort((a, b) {
+            final ta = (a.data() as Map)['time']?.toString() ?? '';
+            final tb = (b.data() as Map)['time']?.toString() ?? '';
+            return ta.compareTo(tb);
+          });
 
           if (docs.isEmpty) {
             return const Center(child: Padding(

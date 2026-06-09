@@ -1,3 +1,9 @@
+
+
+// lib/auth/signup_desktop.dart
+// ═══════════════════════════════════════════════════════════
+//  صفحة إنشاء حساب جديد — خاصة بالأطباء فقط (GlucoLink)
+// ═══════════════════════════════════════════════════════════
 import 'package:flutter/material.dart';
 import '../../services/auth_service.dart';
 
@@ -19,15 +25,15 @@ class _SignUpScreenState extends State<SignUpScreen> {
   
   bool _isLoading = false;
   bool _obscurePass = true;
-  String _currentLang = 'fr';
+  String _currentLang = 'ar'; // جعلت اللغة الافتراضية العربية لتطابق نظام اللوقين الداعم للـ RTL
   
-  // المتغير الجديد لتحديد الرتبة
-  String _selectedRole = 'doctor'; 
+  // الرتبة ثابتة دائماً "doctor" لأن السكرتيرة يتم تسجيلها من طرف الطبيب حصراً
+  final String _selectedRole = 'doctor'; 
 
   final Map<String, Map<String, String>> _texts = {
     'fr': {
       'title': 'Créer un Compte',
-      'sub': 'Rejoignez la plateforme GlucoLink',
+      'sub': 'Rejoignez la plateforme GlucoLink en tant que médecin',
       'name': 'Nom complet',
       'email': 'Email professionnel',
       'spec': 'Spécialité médicale',
@@ -35,52 +41,55 @@ class _SignUpScreenState extends State<SignUpScreen> {
       'pass': 'Mot de passe',
       'btn': 'S\'inscrire maintenant',
       'have_acc': 'J\'ai déjà un compte',
-      'doctor': 'Médecin',
-      'secretary': 'Secrétaire',
-      'role_selection': 'Je suis un(e) :',
+      'required': 'Champ obligatoire',
     },
     'ar': {
-      'title': 'إنشاء حساب جديد',
-      'sub': 'انضم إلى منصة GlucoLink الطبية',
+      'title': 'إنشاء حساب طبيب',
+      'sub': 'انضم إلى منصة GlucoLink الطبية كـمحترف صحي',
       'name': 'الاسم الكامل',
-      'email': 'البريد الإلكتروني',
+      'email': 'البريد الإلكتروني المهني',
       'spec': 'التخصص الطبي',
       'id': 'رقم القيد في نقابة الأطباء',
       'pass': 'كلمة المرور',
-      'btn': 'تسجيل الحساب',
-      'have_acc': 'لديك حساب بالفعل؟',
-      'doctor': 'طبيب',
-      'secretary': 'سكرتير(ة)',
-      'role_selection': 'أنا عبارة عن:',
+      'btn': 'تسجيل الحساب البنكي',
+      'have_acc': 'لديك حساب بالفعل؟ تسجيل الدخول',
+      'required': 'هذا الحقل مطلوب',
     },
     'en': {
-      'title': 'Create Account',
-      'sub': 'Join the GlucoLink platform',
+      'title': 'Create Doctor Account',
+      'sub': 'Join the GlucoLink platform as a medical professional',
       'name': 'Full Name',
       'email': 'Professional Email',
       'spec': 'Medical Specialty',
       'id': 'Medical License Number',
       'pass': 'Password',
       'btn': 'Register Now',
-      'have_acc': 'Already have an account?',
-      'doctor': 'Doctor',
-      'secretary': 'Secretary',
-      'role_selection': 'I am a:',
+      'have_acc': 'Already have an account? Login',
+      'required': 'Required field',
     }
   };
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _emailController.dispose();
+    _specController.dispose();
+    _idController.dispose();
+    _passController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
 
-    // ملاحظة: هنا نمرر الـ Role لخدمة الـ Firebase
     final success = await AuthService().signUpUser(
       email: _emailController.text.trim(),
       password: _passController.text.trim(),
       name: _nameController.text.trim(),
       role: _selectedRole,
-      specialty: _selectedRole == 'doctor' ? _specController.text.trim() : null,
-      idProf: _selectedRole == 'doctor' ? _idController.text.trim() : null,
+      specialty: _specController.text.trim(),
+      idProf: _idController.text.trim(),
     );
 
     if (mounted) {
@@ -127,54 +136,40 @@ class _SignUpScreenState extends State<SignUpScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(t['title']!, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
-                        Text(t['sub']!, style: TextStyle(color: Colors.grey[500])),
-                        const SizedBox(height: 30),
+                        Text(t['title']!, style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Color(0xFF0D47A1))),
+                        const SizedBox(height: 4),
+                        Text(t['sub']!, style: TextStyle(color: Colors.grey[500], fontSize: 14)),
+                        const SizedBox(height: 35),
 
-                        // --- اختيار الرتبة (Role Switcher) ---
-                        Text(t['role_selection']!, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 10),
-                        Row(
-                          children: [
-                            _buildRoleCard('doctor', t['doctor']!, Icons.medical_services_outlined),
-                            const SizedBox(width: 15),
-                            _buildRoleCard('secretary', t['secretary']!, Icons.person_search_outlined),
-                          ],
-                        ),
-                        const SizedBox(height: 30),
-
-                        _buildField(t['name']!, Icons.person_outline, _nameController),
-                        const SizedBox(height: 15),
-                        _buildField(t['email']!, Icons.alternate_email, _emailController),
-                        const SizedBox(height: 15),
-
-                        // حقول تظهر للطبيب فقط
-                        if (_selectedRole == 'doctor') ...[
-                          _buildField(t['spec']!, Icons.stars_outlined, _specController),
-                          const SizedBox(height: 15),
-                          _buildField(t['id']!, Icons.badge_outlined, _idController),
-                          const SizedBox(height: 15),
-                        ],
-
-                        _buildField(t['pass']!, Icons.lock_outline, _passController, isPass: true),
-                        const SizedBox(height: 30),
+                        // حقول إدخال البيانات الموحدة للطبيب مباشرة
+                        _buildField(t['name']!, Icons.person_outline, _nameController, t['required']!),
+                        const SizedBox(height: 18),
+                        _buildField(t['email']!, Icons.alternate_email, _emailController, t['required']!),
+                        const SizedBox(height: 18),
+                        _buildField(t['spec']!, Icons.stars_outlined, _specController, t['required']!),
+                        const SizedBox(height: 18),
+                        _buildField(t['id']!, Icons.badge_outlined, _idController, t['required']!),
+                        const SizedBox(height: 18),
+                        _buildField(t['pass']!, Icons.lock_outline, _passController, t['required']!, isPass: true),
+                        const SizedBox(height: 35),
 
                         _isLoading 
-                          ? const Center(child: CircularProgressIndicator())
+                          ? const Center(child: CircularProgressIndicator(color: Color(0xFF0D47A1)))
                           : ElevatedButton(
                               onPressed: _handleSignUp,
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: const Color(0xFF0D47A1),
                                 minimumSize: const Size(double.infinity, 55),
                                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                elevation: 0,
                               ),
-                              child: Text(t['btn']!, style: const TextStyle(color: Colors.white, fontSize: 16)),
+                              child: Text(t['btn']!, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
                             ),
-                        
+                        const SizedBox(height: 16),
                         Center(
                           child: TextButton(
                             onPressed: () => Navigator.pop(context),
-                            child: Text(t['have_acc']!),
+                            child: Text(t['have_acc']!, style: const TextStyle(color: Color(0xFF64748B), fontWeight: FontWeight.w600)),
                           ),
                         )
                       ],
@@ -189,46 +184,25 @@ class _SignUpScreenState extends State<SignUpScreen> {
     );
   }
 
-  // ودجت لاختيار الرتبة بطريقة عصرية
-  Widget _buildRoleCard(String role, String label, IconData icon) {
-    bool isSelected = _selectedRole == role;
-    return Expanded(
-      child: InkWell(
-        onTap: () => setState(() => _selectedRole = role),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 15),
-          decoration: BoxDecoration(
-            color: isSelected ? const Color(0xFF0D47A1) : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: isSelected ? const Color(0xFF0D47A1) : Colors.grey.shade300),
-          ),
-          child: Column(
-            children: [
-              Icon(icon, color: isSelected ? Colors.white : Colors.grey),
-              const SizedBox(height: 5),
-              Text(label, style: TextStyle(color: isSelected ? Colors.white : Colors.grey, fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildField(String label, IconData icon, TextEditingController controller, {bool isPass = false}) {
+  Widget _buildField(String label, IconData icon, TextEditingController controller, String requiredText, {bool isPass = false}) {
     return TextFormField(
       controller: controller,
       obscureText: isPass ? _obscurePass : false,
-      validator: (v) => v!.isEmpty ? "Obligatoire" : null,
+      validator: (v) => v == null || v.trim().isEmpty ? requiredText : null,
       decoration: InputDecoration(
         labelText: label,
+        labelStyle: const TextStyle(fontSize: 14, color: Color(0xFF64748B)),
         prefixIcon: Icon(icon, size: 20, color: const Color(0xFF0D47A1)),
         suffixIcon: isPass ? IconButton(
           icon: Icon(_obscurePass ? Icons.visibility_off : Icons.visibility),
           onPressed: () => setState(() => _obscurePass = !_obscurePass),
         ) : null,
-        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFFE2E8F0))),
+        focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: const BorderSide(color: Color(0xFF0D47A1), width: 1.5)),
         filled: true,
-        fillColor: Colors.grey.withOpacity(0.05),
+        fillColor: Colors.grey.withOpacity(0.02),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
     );
   }
@@ -236,10 +210,10 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildSideIllustration() {
     return Container(
       width: 400,
-      height: 700,
+      height: 730, // متناسق تماماً مع زيادة أبعاد حقول الطبيب الإجبارية
       decoration: const BoxDecoration(
         color: Color(0xFF0D47A1),
-        borderRadius: BorderRadius.only(topLeft: Radius.circular(25), bottomLeft: Radius.circular(25)),
+        borderRadius: BorderRadius.only(topRight: Radius.circular(25), bottomRight: Radius.circular(25)),
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -249,7 +223,7 @@ class _SignUpScreenState extends State<SignUpScreen> {
           Text("GlucoLink", style: TextStyle(color: Colors.white, fontSize: 35, fontWeight: FontWeight.bold)),
           Padding(
             padding: EdgeInsets.all(20),
-            child: Text("Gestion intelligente pour les professionnels de santé.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70)),
+            child: Text("Gestion intelligente pour les professionnels de santé.", textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 15)),
           ),
         ],
       ),
@@ -259,11 +233,13 @@ class _SignUpScreenState extends State<SignUpScreen> {
   Widget _buildLangPicker() {
     return DropdownButton<String>(
       value: _currentLang,
+      underline: const SizedBox(),
+      icon: const Icon(Icons.language, color: Color(0xFF0D47A1)),
       onChanged: (v) => setState(() => _currentLang = v!),
       items: const [
-        DropdownMenuItem(value: 'ar', child: Text("AR")),
-        DropdownMenuItem(value: 'fr', child: Text("FR")),
-        DropdownMenuItem(value: 'en', child: Text("EN")),
+        DropdownMenuItem(value: 'ar', child: Text(" AR ", style: TextStyle(fontWeight: FontWeight.bold))),
+        DropdownMenuItem(value: 'fr', child: Text(" FR ", style: TextStyle(fontWeight: FontWeight.bold))),
+        DropdownMenuItem(value: 'en', child: Text(" EN ", style: TextStyle(fontWeight: FontWeight.bold))),
       ],
     );
   }

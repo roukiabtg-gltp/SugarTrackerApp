@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'patient_profile_pageee.dart';
+import 'patient_profile_page.dart';
 import '../doctor_settings_notifier.dart';
 
 class PatientsPage extends StatefulWidget {
