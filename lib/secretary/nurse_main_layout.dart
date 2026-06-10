@@ -9,6 +9,8 @@ import 'Patients.dart';
 import 'Liste d\'Attente.dart';
 import 'facture.dart';
 import '../desktop/auth/login_desktop.dart';
+import 'secretary_profile_page.dart';
+import 'secretary_settings_page.dart';
 
 // ═══════════════════════════════════════════════════════════════════
 //  NURSE MAIN LAYOUT  —  Layout principal de la secrétaire
@@ -49,7 +51,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
     {'icon': Icons.access_time_outlined,   'label': "Liste d'Attente"},
     {'icon': Icons.people_outline,         'label': 'Patients'},
     {'icon': Icons.receipt_long_outlined,  'label': 'Facturation'},
-    
+    {'icon': Icons.settings_outlined,      'label': 'Paramètres'},
   ];
 
   @override
@@ -70,7 +72,8 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
             const WaitingListPage(),
             const PatientsPage(),
             const FacturePage(),
-            
+            const SecretarySettingsPage(),   // index 5
+            const SecretaryProfilePage(),    // index 6
           ]),
         ),
       ]),
@@ -118,23 +121,51 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
           ),
         ),
         const Divider(height: 1),
-        // Secretary profile
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(children: [
-            CircleAvatar(
-              backgroundColor: const Color(0xFF2563EB).withOpacity(0.1),
-              child: Text(
-                _secretaryName.isNotEmpty ? _secretaryName[0].toUpperCase() : 'S',
-                style: const TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold),
-              ),
+        // Secretary profile — قابل للنقر يفتح صفحة البروفايل
+        InkWell(
+          onTap: () => setState(() => _selectedIndex = 6),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _selectedIndex == 6
+                  ? const Color(0xFF2563EB).withOpacity(0.06)
+                  : Colors.transparent,
             ),
-            const SizedBox(width: 10),
-            Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(_secretaryName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, overflow: TextOverflow.ellipsis)),
-              const Text('Secrétaire',    style: TextStyle(color: Colors.grey, fontSize: 11)),
-            ])),
-          ]),
+            child: Row(children: [
+              CircleAvatar(
+                backgroundColor: _selectedIndex == 6
+                    ? const Color(0xFF2563EB)
+                    : const Color(0xFF2563EB).withOpacity(0.1),
+                child: Text(
+                  _secretaryName.isNotEmpty ? _secretaryName[0].toUpperCase() : 'S',
+                  style: TextStyle(
+                    color: _selectedIndex == 6
+                        ? Colors.white
+                        : const Color(0xFF2563EB),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(_secretaryName,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      overflow: TextOverflow.ellipsis,
+                      color: _selectedIndex == 6
+                          ? const Color(0xFF2563EB)
+                          : const Color(0xFF0D1117),
+                    )),
+                const Text('Secrétaire', style: TextStyle(color: Colors.grey, fontSize: 11)),
+              ])),
+              Icon(Icons.chevron_right_rounded,
+                  size: 18,
+                  color: _selectedIndex == 6
+                      ? const Color(0xFF2563EB)
+                      : Colors.grey.shade400),
+            ]),
+          ),
         ),
         // Logout
         _sidebarItem(
@@ -739,36 +770,21 @@ class _TodayAppointments extends StatelessWidget {
             ? FirebaseFirestore.instance
                 .collection('appointments')
                 .where('doctorId', isEqualTo: doctorId)
-                .where('date', isEqualTo: today)
+                .orderBy('createdAt', descending: false)
                 .snapshots()
             : FirebaseFirestore.instance
                 .collection('appointments')
-                .where('date', isEqualTo: today)
+                .orderBy('createdAt', descending: false)
                 .snapshots(),
         builder: (_, snap) {
-          if (snap.hasError) {
-            return Center(child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text('Erreur: ${snap.error}', style: const TextStyle(color: Colors.red)),
-            ));
-          }
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(child: Padding(padding: EdgeInsets.all(24), child: CircularProgressIndicator()));
           }
 
-          // فلترة إضافية على الـ client للتأكد من اليوم (يشتغل مع أي فورمات)
           final docs = snap.data?.docs.where((d) {
             final data = d.data() as Map<String, dynamic>;
-            final dateStr = (data['date'] ?? '').toString();
-            return dateStr == today || dateStr.startsWith(today);
+            return (data['date'] ?? '').toString().startsWith(today);
           }).toList() ?? [];
-
-          // ترتيب حسب الوقت محلياً بدل orderBy (تجنب مشكلة الـ index)
-          docs.sort((a, b) {
-            final ta = (a.data() as Map)['time']?.toString() ?? '';
-            final tb = (b.data() as Map)['time']?.toString() ?? '';
-            return ta.compareTo(tb);
-          });
 
           if (docs.isEmpty) {
             return const Center(child: Padding(
