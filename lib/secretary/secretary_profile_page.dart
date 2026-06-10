@@ -1,7 +1,11 @@
 // lib/secretary/secretary_profile_page.dart
+import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as fst;
+import 'package:http/http.dart' as http;
+import 'package:file_picker/file_picker.dart';
 import '../services/sucritere_settings_notifier.dart';
 
 class SecretaryProfilePage extends StatefulWidget {
@@ -21,6 +25,11 @@ class _SecretaryProfilePageState extends State<SecretaryProfilePage> {
   String _address = '';
   bool   _loading = true;
   bool   _saving  = false;
+  bool   _uploading = false;
+  String? _photoUrl;
+
+  // ── ImgBB API Key ── غيّر هذا المفتاح بمفتاحك الخاص من https://api.imgbb.com/
+  static const _imgbbApiKey = 'c7ce056b3b12343748fcb41b22f6c3fd';
 
   // ── controllers édition ────────────────────────────────────────────────
   late TextEditingController _nameCtrl;
@@ -49,7 +58,7 @@ class _SecretaryProfilePageState extends State<SecretaryProfilePage> {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) { setState(() => _loading = false); return; }
 
-    final doc = await FirebaseFirestore.instance
+    final doc = await fst.FirebaseFirestore.instance
         .collection('users')
         .doc(uid)
         .get();
@@ -61,6 +70,7 @@ class _SecretaryProfilePageState extends State<SecretaryProfilePage> {
       _email   = data['email']   ?? FirebaseAuth.instance.currentUser?.email ?? '';
       _phone   = data['phone']   ?? '';
       _address = data['address'] ?? '';
+      _photoUrl = data['photoUrl']?.toString();
       _nameCtrl.text    = _name;
       _phoneCtrl.text   = _phone;
       _addressCtrl.text = _address;
@@ -74,11 +84,11 @@ class _SecretaryProfilePageState extends State<SecretaryProfilePage> {
     if (uid == null) return;
     setState(() => _saving = true);
     try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+      await fst.FirebaseFirestore.instance.collection('users').doc(uid).set({
         'name':    _nameCtrl.text.trim(),
         'phone':   _phoneCtrl.text.trim(),
         'address': _addressCtrl.text.trim(),
-      });
+      }, fst.SetOptions(merge: true));
       if (mounted) {
         setState(() {
           _name    = _nameCtrl.text.trim();
@@ -108,6 +118,52 @@ class _SecretaryProfilePageState extends State<SecretaryProfilePage> {
     if (parts.isEmpty) return 'S';
     if (parts.length == 1) return parts[0][0].toUpperCase();
     return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
+  }
+
+  // ── Upload Photo via ImgBB ──────────────────────────────────────────
+  Future<void> _pickPhoto() async {
+    if (_uploading) return;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image, withData: true,
+        dialogTitle: 'Select profile photo',
+      );
+      if (result == null || result.files.isEmpty) return;
+      final Uint8List? bytes = result.files.first.bytes;
+      if (bytes == null || bytes.isEmpty || !mounted) return;
+
+      setState(() => _uploading = true);
+
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+
+      // ✅ رفع الصورة إلى ImgBB
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.imgbb.com/1/upload?key=$_imgbbApiKey'),
+      );
+      request.fields['image'] = base64Encode(bytes);
+
+      final streamResp = await request.send();
+      final respBody = await streamResp.stream.bytesToString();
+
+      if (streamResp.statusCode != 200) {
+        throw Exception('ImgBB upload failed: ${streamResp.statusCode}');
+      }
+
+      final json = jsonDecode(respBody);
+      final url = json['data']['url'] as String;
+
+      // حفظ الـ URL في Firestore
+      await fst.FirebaseFirestore.instance.collection('users').doc(uid).set(
+          {'photoUrl': url}, fst.SetOptions(merge: true));
+
+      if (mounted) setState(() { _photoUrl = url; _uploading = false; });
+      _snack(ts('Photo updated ✅', 'تم تحديث الصورة ✅', 'Photo mise à jour ✅'));
+    } catch (e) {
+      if (mounted) setState(() => _uploading = false);
+      _snack(ts('Photo error: $e', 'خطأ في الصورة: $e', 'Erreur photo: $e'), isError: true);
+    }
   }
 
   // ══════════════════════════════════════════════════════════════════════
@@ -158,24 +214,58 @@ class _SecretaryProfilePageState extends State<SecretaryProfilePage> {
                     // ── Avatar + nom ─────────────────────────────────────
                     Center(
                       child: Column(children: [
-                        Container(
-                          width: 90, height: 90,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: _blue.withOpacity(0.15),
-                            border: Border.all(color: _blue, width: 2.5),
-                          ),
-                          child: Center(
-                            child: Text(
-                              _initials(_name),
-                              style: TextStyle(
-                                fontSize: 32 * scale,
-                                fontWeight: FontWeight.bold,
-                                color: _blue,
-                              ),
+                        Stack(alignment: Alignment.bottomRight, children: [
+                          Container(
+                            width: 120, height: 120,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _blue.withOpacity(0.1),
+                              border: Border.all(color: _blue.withOpacity(0.25), width: 3),
+                            ),
+                            child: ClipOval(
+                              child: _photoUrl != null && _photoUrl!.isNotEmpty
+                                  ? Image.network(
+                                      _photoUrl!,
+                                      fit: BoxFit.cover,
+                                      loadingBuilder: (_, child, progress) {
+                                        if (progress == null) return child;
+                                        return Center(
+                                          child: CircularProgressIndicator(
+                                            value: progress.expectedTotalBytes != null
+                                                ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
+                                                : null,
+                                            color: _blue, strokeWidth: 2,
+                                          ),
+                                        );
+                                      },
+                                      errorBuilder: (_, __, ___) => Center(
+                                        child: Text(_initials(_name), style: TextStyle(
+                                            fontSize: 36 * scale, fontWeight: FontWeight.bold, color: _blue)),
+                                      ),
+                                    )
+                                  : Center(
+                                      child: Text(_initials(_name), style: TextStyle(
+                                          fontSize: 36 * scale, fontWeight: FontWeight.bold, color: _blue)),
+                                    ),
                             ),
                           ),
-                        ),
+                          // زر الكاميرا
+                          GestureDetector(
+                            onTap: _uploading ? null : _pickPhoto,
+                            child: Container(
+                              width: 36, height: 36,
+                              decoration: BoxDecoration(
+                                color: _uploading ? Colors.grey.shade400 : _blue,
+                                shape: BoxShape.circle,
+                                border: Border.all(color: Colors.white, width: 2.5),
+                              ),
+                              child: _uploading
+                                  ? const Padding(padding: EdgeInsets.all(8),
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                                  : const Icon(Icons.camera_alt_outlined, color: Colors.white, size: 17),
+                            ),
+                          ),
+                        ]),
                         const SizedBox(height: 12),
                         Text(
                           _name.isEmpty

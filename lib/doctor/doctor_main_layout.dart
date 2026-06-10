@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_database/firebase_database.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' as fst;
 import 'dashboard.dart';
 import 'patients.dart';
 import 'alerts.dart';
@@ -220,7 +221,7 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     );
   }
 
-  // ── Doctor profile (Realtime DB) ──────────────────────────
+  // ── Doctor profile (Firestore + Realtime DB) ──────────────
   Widget _buildDoctorProfile(bool isDark, double scale) {
     if (_uid == null) return const SizedBox();
     return StreamBuilder<DatabaseEvent>(
@@ -234,46 +235,60 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
           name      = '$fn $ln'.trim().isNotEmpty ? '$fn $ln'.trim() : 'Doctor';
           specialty = d['specialty']?.toString() ?? 'Specialist';
         }
-        return Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-          child: GestureDetector(
-            onTap: () => setState(() => _selectedIndex = 8), // ← index 8 = Profile
-            child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: isDark
-                  ? Colors.white.withOpacity(0.05)
-                  : Colors.blue.shade50,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFF1882FF).withOpacity(0.15)),
-            ),
-            child: Row(children: [
-              CircleAvatar(
-                backgroundColor: const Color(0xFF1882FF).withOpacity(0.2),
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : 'D',
-                  style: const TextStyle(
-                      color: Color(0xFF1882FF), fontWeight: FontWeight.bold),
+        // جلب الصورة من Firestore
+        return FutureBuilder<fst.DocumentSnapshot>(
+          future: fst.FirebaseFirestore.instance.collection('users').doc(_uid).get(),
+          builder: (_, photoSnap) {
+            String? photoUrl;
+            if (photoSnap.hasData && photoSnap.data!.exists) {
+              photoUrl = photoSnap.data!['photoUrl']?.toString();
+            }
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: GestureDetector(
+                onTap: () => setState(() => _selectedIndex = 8), // ← index 8 = Profile
+                child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withOpacity(0.05)
+                      : Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF1882FF).withOpacity(0.15)),
                 ),
+                child: Row(children: [
+                  CircleAvatar(
+                    backgroundColor: const Color(0xFF1882FF).withOpacity(0.2),
+                    backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
+                        ? NetworkImage(photoUrl) : null,
+                    child: (photoUrl == null || photoUrl.isEmpty)
+                        ? Text(
+                            name.isNotEmpty ? name[0].toUpperCase() : 'D',
+                            style: const TextStyle(
+                                color: Color(0xFF1882FF), fontWeight: FontWeight.bold),
+                          )
+                        : null,
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(name,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13 * scale,
+                              color: isDark ? Colors.white : const Color(0xFF0D1117))),
+                      Text(specialty,
+                          style: TextStyle(
+                              color: Colors.grey, fontSize: 11 * scale)),
+                    ],
+                  )),
+                ]),
               ),
-              const SizedBox(width: 10),
-              Expanded(child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(name,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 13 * scale,
-                          color: isDark ? Colors.white : const Color(0xFF0D1117))),
-                  Text(specialty,
-                      style: TextStyle(
-                          color: Colors.grey, fontSize: 11 * scale)),
-                ],
-              )),
-            ]),
-          ),
-          ),  // GestureDetector
+              ),  // GestureDetector
+            );
+          },
         );
       },
     );

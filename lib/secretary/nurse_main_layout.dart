@@ -26,6 +26,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
   int    _selectedIndex = 0;
   String _secretaryName = 'Secrétaire';
   String? doctorId;
+  String? _photoUrl;
 
   @override
   void initState() {
@@ -41,6 +42,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
       setState(() {
         _secretaryName = doc['name'] ?? 'Secrétaire';
         doctorId       = doc['doctorId'];
+        _photoUrl      = doc['photoUrl']?.toString();
       });
     }
   }
@@ -136,15 +138,19 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
                 backgroundColor: _selectedIndex == 6
                     ? const Color(0xFF2563EB)
                     : const Color(0xFF2563EB).withOpacity(0.1),
-                child: Text(
-                  _secretaryName.isNotEmpty ? _secretaryName[0].toUpperCase() : 'S',
-                  style: TextStyle(
-                    color: _selectedIndex == 6
-                        ? Colors.white
-                        : const Color(0xFF2563EB),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                backgroundImage: (_photoUrl != null && _photoUrl!.isNotEmpty)
+                    ? NetworkImage(_photoUrl!) : null,
+                child: (_photoUrl == null || _photoUrl!.isEmpty)
+                    ? Text(
+                        _secretaryName.isNotEmpty ? _secretaryName[0].toUpperCase() : 'S',
+                        style: TextStyle(
+                          color: _selectedIndex == 6
+                              ? Colors.white
+                              : const Color(0xFF2563EB),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -670,8 +676,6 @@ class _ParticleWidgetState extends State<_ParticleWidget>
     );
   }
 }
-
-
 
 // ═══════════════════════════════════════════════════════════════════
 //  STATS ROW  —  إحصائيات حقيقية من Firebase

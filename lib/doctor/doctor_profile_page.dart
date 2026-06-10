@@ -8,11 +8,12 @@
 // - صُلح: save يستخدم set(merge:true) — يعمل حتى لو Document جديد
 // - صُلح: حقول About Me و Clinic تظهر بشكل صحيح وتُحفظ
 // ════════════════════════════════════════════════════════════════════════
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' as fst;
-import 'package:firebase_storage/firebase_storage.dart';
+import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import '../doctor_settings_notifier.dart';
 
@@ -24,8 +25,10 @@ class DoctorProfilePage extends StatefulWidget {
 
 class _DoctorProfilePageState extends State<DoctorProfilePage> {
   final _fs      = fst.FirebaseFirestore.instance;
-  final _storage = FirebaseStorage.instance;
   final String?  _uid = FirebaseAuth.instance.currentUser?.uid;
+
+  // ── ImgBB API Key ── غيّر هذا المفتاح بمفتاحك الخاص من https://api.imgbb.com/
+  static const _imgbbApiKey = 'c7ce056b3b12343748fcb41b22f6c3fd';
 
   final _nameCtrl      = TextEditingController();
   final _specialtyCtrl = TextEditingController();
@@ -107,7 +110,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
     }
   }
 
-  // ── Upload Photo ──────────────────────────────────────────────────────
+  // ── Upload Photo via ImgBB ──────────────────────────────────────────
   Future<void> _pickPhoto() async {
     if (_uploading) return;
     try {
@@ -121,10 +124,22 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
 
       setState(() => _uploading = true);
 
-      // ✅ رفع الصورة إلى Firebase Storage
-      final ref = _storage.ref('doctor_photos/$_uid.jpg');
-      await ref.putData(bytes, SettableMetadata(contentType: 'image/jpeg'));
-      final url = await ref.getDownloadURL();
+      // ✅ رفع الصورة إلى ImgBB
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('https://api.imgbb.com/1/upload?key=$_imgbbApiKey'),
+      );
+      request.fields['image'] = base64Encode(bytes);
+
+      final streamResp = await request.send();
+      final respBody = await streamResp.stream.bytesToString();
+
+      if (streamResp.statusCode != 200) {
+        throw Exception('ImgBB upload failed: ${streamResp.statusCode}');
+      }
+
+      final json = jsonDecode(respBody);
+      final url = json['data']['url'] as String;
 
       // حفظ الـ URL في Firestore
       await _fs.collection('users').doc(_uid).set(
@@ -134,11 +149,7 @@ class _DoctorProfilePageState extends State<DoctorProfilePage> {
       _snack('Photo updated ✅');
     } catch (e) {
       if (mounted) setState(() => _uploading = false);
-      if (e.toString().contains('storage') || e.toString().contains('unauthorized')) {
-        _snack('Enable Firebase Storage in console:\n storage.rules → allow read, write', err: true);
-      } else {
-        _snack('Photo error: $e', err: true);
-      }
+      _snack('Photo error: $e', err: true);
     }
   }
 
