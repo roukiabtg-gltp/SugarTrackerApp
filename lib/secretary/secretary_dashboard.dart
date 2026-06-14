@@ -10,8 +10,7 @@ class SecretaryDashboard extends StatefulWidget {
 }
 
 class _SecretaryDashboardState extends State<SecretaryDashboard> {
-  int     _selectedIndex = 0;
-  String? _doctorId;       // ← الحقل الصحيح اللي يُحفظ في appointments
+  String? _doctorId;
   bool    _loading = true;
 
   @override
@@ -20,7 +19,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     _loadDoctorId();
   }
 
-  // ── نجيب doctorId من Firestore تاع السكرتيرة ─────────────────────────
   Future<void> _loadDoctorId() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) { setState(() => _loading = false); return; }
@@ -73,48 +71,110 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator(color: Color(0xFF1882FF))),
+      return const Center(
+        child: CircularProgressIndicator(color: Color(0xFF1882FF)),
       );
     }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FB),
-      body: Row(children: [
-        _buildSidebar(),
-        Expanded(
-          child: IndexedStack(
-            index: _selectedIndex,
-            children: [
-              _buildAccueilContent(),
-              _buildRendezVousPage(),
-              const Center(child: Text("Liste d'Attente")),
-              const Center(child: Text("Patients")),
-              const Center(child: Text("Facturation")),
-            ],
-          ),
-        ),
-      ]),
-    );
-  }
-
-  // ══ Accueil ══════════════════════════════════════════════════════════
-  Widget _buildAccueilContent() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(32),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // ── Stat cards ──
+          Row(
+            children: [
+              _buildStatCard(
+                Icons.calendar_today_outlined,
+                "Aujourd'hui",
+                'Rendez-vous',
+                const Color(0xFF2563EB),
+                const Color(0xFFDBEAFE),
+              ),
+              const SizedBox(width: 16),
+              _buildStatCard(
+                Icons.people_outline_rounded,
+                'Patients',
+                'Enregistrés',
+                const Color(0xFF16A34A),
+                const Color(0xFFDCFCE7),
+              ),
+              const SizedBox(width: 16),
+              _buildStatCard(
+                Icons.attach_money,
+                'Impayées',
+                'Factures',
+                Colors.redAccent,
+                const Color(0xFFFEE2E2),
+              ),
+              const SizedBox(width: 16),
+              _buildStatCard(
+                Icons.description_outlined,
+                'Documents',
+                'Cette semaine',
+                Colors.purple,
+                const Color(0xFFF3E8FF),
+              ),
+            ],
+          ),
           const SizedBox(height: 28),
+
+          // ── Today's Appointments ──
           _buildTodayAppointments(),
         ],
       ),
     );
   }
 
+  // ── Stat Card ──
+  Widget _buildStatCard(IconData icon, String title, String subtitle, Color color, Color bg) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: color, size: 24),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                        color: Color(0xFF1E293B))),
+                const SizedBox(height: 2),
+                Text(subtitle,
+                    style: const TextStyle(color: Colors.grey, fontSize: 12)),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
   // ══ Today's Appointments ═════════════════════════════════════════════
   Widget _buildTodayAppointments() {
-    // ── doctorId مش متوفر ──
     if (_doctorId == null || _doctorId!.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
@@ -133,16 +193,13 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
     final todayStr = DateFormat('yyyy-MM-dd').format(DateTime.now());
 
     return StreamBuilder<QuerySnapshot>(
-      // ← نفلتر بـ doctorId (نفس الحقل اللي يُحفظ عند إضافة موعد)
       stream: FirebaseFirestore.instance
           .collection('appointments')
           .where('doctorId', isEqualTo: _doctorId)
           .where('date', isEqualTo: todayStr)
           .snapshots(),
       builder: (context, snapshot) {
-        // ── خطأ Firestore (مثلاً index ناقص) ──
         if (snapshot.hasError) {
-          // fallback: نجيب كل مواعيد الطبيب ونفلتر يدوياً
           return StreamBuilder<QuerySnapshot>(
             stream: FirebaseFirestore.instance
                 .collection('appointments')
@@ -163,7 +220,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
           );
         }
 
-        // ── ترتيب حسب الوقت محلياً (نتجنب orderBy + where = index مركب) ──
         final todayDocs = (snapshot.data?.docs ?? [])
           ..sort((a, b) {
             final ta = (a.data() as Map)['time']?.toString() ?? '';
@@ -198,7 +254,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header ──
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -216,30 +271,10 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                   style: const TextStyle(color: Colors.grey, fontSize: 12),
                 ),
               ]),
-              GestureDetector(
-                onTap: () => setState(() => _selectedIndex = 1),
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.grey.shade200),
-                  ),
-                  child: const Text(
-                    'Voir tout',
-                    style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF374151)),
-                  ),
-                ),
-              ),
             ],
           ),
           Divider(color: Colors.grey.shade100, height: 24),
 
-          // ── القائمة ──
           if (!snapshot.hasData)
             const Center(
               child: Padding(
@@ -290,7 +325,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                                 color: Colors.grey.shade100, width: 0.8)),
                   ),
                   child: Row(children: [
-                    // Avatar
                     CircleAvatar(
                       radius: 20,
                       backgroundColor: colors[0],
@@ -304,7 +338,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                     ),
                     const SizedBox(width: 14),
 
-                    // الاسم + النوع
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -324,7 +357,6 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                       ),
                     ),
 
-                    // وقت + موقع + badge
                     Wrap(
                       spacing: 8,
                       runSpacing: 6,
@@ -384,55 +416,8 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
       ),
     );
   }
-
-  // ══ Rendez-vous page ═════════════════════════════════════════════════
-  Widget _buildRendezVousPage() {
-    if (_doctorId == null || _doctorId!.isEmpty) {
-      return const Center(child: Text("doctorId introuvable."));
-    }
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirebaseFirestore.instance
-          .collection('appointments')
-          .where('doctorId', isEqualTo: _doctorId)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF1882FF)));
-        }
-        final docs = snapshot.data!.docs;
-        if (docs.isEmpty) {
-          return const Center(child: Text("Aucun rendez-vous."));
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(24),
-          itemCount: docs.length,
-          itemBuilder: (context, index) {
-            final rdv = docs[index].data() as Map<String, dynamic>;
-            return _buildPatientRow(
-              rdv['patientName'] ?? 'Patient',
-              rdv['time'] ?? '--:--',
-              rdv['status'] ?? 'en_attente',
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildSidebar() => Container(width: 280, color: Colors.white);
-
-  Widget _buildPatientRow(String name, String time, String status) {
-    return Card(
-      child: ListTile(
-        title: Text(name),
-        subtitle: Text("$time - $status"),
-      ),
-    );
-  }
 }
 
-// ── Status Enum ───────────────────────────────────────────────────────────
 enum _ApptStatus { confirmed, pending, cancelled }
 
 extension _ApptStatusExt on _ApptStatus {

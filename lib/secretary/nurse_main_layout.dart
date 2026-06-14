@@ -1,248 +1,992 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_database/firebase_database.dart';
 import 'package:intl/intl.dart';
+import 'Rendez-vous.dart';
+import 'Patients.dart';
+import 'Liste d\'Attente.dart';
+import 'facture.dart';
+import '../desktop/auth/login_desktop.dart';
+import 'secretary_profile_page.dart';
+import 'secretary_settings_page.dart';
+import 'secretary_notes_page.dart'; // ← الصفحة الجديدة
 
-class SecretaryNotesPage extends StatefulWidget {
-  const SecretaryNotesPage({super.key});
+class NurseMainLayout extends StatefulWidget {
+  const NurseMainLayout({super.key});
   @override
-  State<SecretaryNotesPage> createState() => _SecretaryNotesPageState();
+  State<NurseMainLayout> createState() => _NurseMainLayoutState();
 }
 
-class _SecretaryNotesPageState extends State<SecretaryNotesPage>
-    with SingleTickerProviderStateMixin {
-  final _db = FirebaseDatabase.instance.ref();
-  String? _doctorId;
-  bool    _loading = true;
-
-  late AnimationController _animCtrl;
+class _NurseMainLayoutState extends State<NurseMainLayout> {
+  int    _selectedIndex = 0;
+  String _secretaryName = 'Secrétaire';
+  String? doctorId;
 
   @override
-  void initState() {
-    super.initState();
-    _animCtrl = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 400),
-    );
-    _loadDoctorId();
-  }
+  void initState() { super.initState(); _loadSecretaryInfo(); }
 
-  @override
-  void dispose() {
-    _animCtrl.dispose();
-    super.dispose();
-  }
-
-  Future<void> _loadDoctorId() async {
+  Future<void> _loadSecretaryInfo() async {
     final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) { setState(() => _loading = false); return; }
+    if (uid == null) return;
     final doc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
-    if (mounted) {
+    if (doc.exists && mounted) {
       setState(() {
-        _doctorId = doc.data()?['doctorId'];
-        _loading  = false;
+        _secretaryName = doc['name'] ?? 'Secrétaire';
+        doctorId       = doc['doctorId'];
       });
     }
   }
 
-  Future<void> _markAsRead(String key) async {
-    if (_doctorId == null) return;
-    await _db
-        .child('secretary_notes')
-        .child(_doctorId!)
-        .child(key)
-        .update({'read': true});
+  // ── Menu items (index 5 = Notes) ────────────────────────────────────
+  final List<Map<String, dynamic>> _menuItems = [
+    {'icon': Icons.home_outlined,          'label': 'Accueil'},
+    {'icon': Icons.calendar_month_outlined,'label': 'Rendez-vous'},
+    {'icon': Icons.access_time_outlined,   'label': "Liste d'Attente"},
+    {'icon': Icons.people_outline,         'label': 'Patients'},
+    {'icon': Icons.receipt_long_outlined,  'label': 'Facturation'},
+    {'icon': Icons.mail_outlined,          'label': 'Notes Médecin'}, // ← جديد (index 5)
+    {'icon': Icons.settings_outlined,      'label': 'Paramètres'},    // index 6
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8F9FB),
+      body: Row(children: [
+        _buildSidebar(),
+        const VerticalDivider(thickness: 1, width: 1),
+        Expanded(
+          child: IndexedStack(index: _selectedIndex, children: [
+            _SecretaryDashboardContent(
+              doctorId:      doctorId,
+              secretaryName: _secretaryName,
+              onNavigate:    (i) => setState(() => _selectedIndex = i),
+            ),
+            const AppointmentPage(),       // 1
+            const WaitingListPage(),       // 2
+            const PatientsPage(),          // 3
+            const FacturePage(),           // 4
+            const SecretaryNotesPage(),    // 5 ← الجديد
+            const SecretarySettingsPage(), // 6
+            const SecretaryProfilePage(),  // 7
+          ]),
+        ),
+      ]),
+    );
   }
 
-  Future<void> _markAllRead(List<MapEntry<dynamic, dynamic>> entries) async {
-    if (_doctorId == null) return;
-    for (final e in entries) {
-      final d = Map<String, dynamic>.from(e.value);
-      if (d['read'] != true) {
-        await _db
-            .child('secretary_notes')
-            .child(_doctorId!)
-            .child(e.key.toString())
-            .update({'read': true});
-      }
-    }
+  Widget _buildSidebar() {
+    return Container(
+      width: 260, color: Colors.white,
+      child: Column(children: [
+        const SizedBox(height: 32),
+        // Logo
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2563EB).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.monitor_heart,
+                color: Color(0xFF2563EB), size: 26),
+            ),
+            const SizedBox(width: 10),
+            const Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('GlucoLink',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold,
+                    color: Color(0xFF2563EB))),
+              Text('Secrétaire Méd.',
+                style: TextStyle(color: Colors.grey, fontSize: 11)),
+            ]),
+          ]),
+        ),
+        const SizedBox(height: 28),
+        const Divider(height: 1),
+        const SizedBox(height: 16),
+        Expanded(
+          child: ListView.builder(
+            padding: EdgeInsets.zero,
+            itemCount: _menuItems.length,
+            itemBuilder: (_, i) {
+              // Index 5 = Notes Médecin → on affiche le badge
+              final isNotesItem = (i == 5);
+              return isNotesItem && doctorId != null
+                  ? _sidebarItemWithBadge(
+                      icon:       _menuItems[i]['icon'],
+                      label:      _menuItems[i]['label'],
+                      isSelected: _selectedIndex == i,
+                      doctorId:   doctorId!,
+                      onTap:      () => setState(() => _selectedIndex = i),
+                    )
+                  : _sidebarItem(
+                      icon:       _menuItems[i]['icon'],
+                      label:      _menuItems[i]['label'],
+                      isSelected: _selectedIndex == i,
+                      onTap:      () => setState(() => _selectedIndex = i),
+                    );
+            },
+          ),
+        ),
+        const Divider(height: 1),
+        // Profile row
+        InkWell(
+          onTap: () => setState(() => _selectedIndex = 7),
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _selectedIndex == 7
+                  ? const Color(0xFF2563EB).withOpacity(0.06)
+                  : Colors.transparent,
+            ),
+            child: Row(children: [
+              CircleAvatar(
+                backgroundColor: _selectedIndex == 7
+                    ? const Color(0xFF2563EB)
+                    : const Color(0xFF2563EB).withOpacity(0.1),
+                child: Text(
+                  _secretaryName.isNotEmpty
+                      ? _secretaryName[0].toUpperCase()
+                      : 'S',
+                  style: TextStyle(
+                    color: _selectedIndex == 7
+                        ? Colors.white
+                        : const Color(0xFF2563EB),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_secretaryName, style: TextStyle(
+                    fontWeight: FontWeight.bold, fontSize: 13,
+                    overflow: TextOverflow.ellipsis,
+                    color: _selectedIndex == 7
+                        ? const Color(0xFF2563EB)
+                        : const Color(0xFF0D1117),
+                  )),
+                  const Text('Secrétaire',
+                    style: TextStyle(color: Colors.grey, fontSize: 11)),
+                ],
+              )),
+              Icon(Icons.chevron_right_rounded, size: 18,
+                color: _selectedIndex == 7
+                    ? const Color(0xFF2563EB)
+                    : Colors.grey.shade400),
+            ]),
+          ),
+        ),
+        // Logout
+        _sidebarItem(
+          icon: Icons.logout, label: 'Déconnexion',
+          isSelected: false, isLogout: true,
+          onTap: () async {
+            await FirebaseAuth.instance.signOut();
+            if (mounted) {
+              Navigator.pushAndRemoveUntil(context,
+                MaterialPageRoute(builder: (_) => const LoginDesktop()),
+                (_) => false,
+              );
+            }
+          },
+        ),
+        const SizedBox(height: 16),
+      ]),
+    );
   }
 
-  String _fmt(dynamic raw) {
-    if (raw == null) return '--';
-    try {
-      int? ms = raw is int ? raw : int.tryParse(raw.toString());
-      DateTime dt = ms != null
-          ? DateTime.fromMillisecondsSinceEpoch(ms > 9999999999 ? ms : ms * 1000)
-          : DateTime.parse(raw.toString());
-      return DateFormat('dd MMM yyyy · HH:mm').format(dt);
-    } catch (_) { return raw.toString(); }
+  // ── Normal sidebar item ──────────────────────────────────────────────
+  Widget _sidebarItem({
+    required IconData icon, required String label,
+    required bool isSelected, required VoidCallback onTap,
+    bool isLogout = false,
+  }) {
+    final color = isLogout
+        ? Colors.redAccent
+        : isSelected
+            ? const Color(0xFF2563EB)
+            : Colors.grey[600]!;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? const Color(0xFF2563EB)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(children: [
+          Icon(icon, color: isSelected ? Colors.white : color, size: 20),
+          const SizedBox(width: 12),
+          Text(label, style: TextStyle(
+            color: isSelected ? Colors.white : color,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            fontSize: 14,
+          )),
+        ]),
+      ),
+    );
   }
 
-  void _openNote(BuildContext context, String key, Map<String, dynamic> data) {
-    _markAsRead(key);
-    showGeneralDialog(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'close',
-      barrierColor: Colors.black54,
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (_, __, ___) => const SizedBox.shrink(),
-      transitionBuilder: (ctx, anim, __, ___) {
-        final curved = CurvedAnimation(parent: anim, curve: Curves.easeOutBack);
-        return ScaleTransition(
-          scale: Tween<double>(begin: 0.85, end: 1.0).animate(curved),
-          child: FadeTransition(
-            opacity: anim,
-            child: Center(
-              child: Material(
-                color: Colors.transparent,
-                child: Container(
-                  width: 480,
-                  margin: const EdgeInsets.all(32),
+  // ── Sidebar item WITH unread badge (Notes) ───────────────────────────
+  Widget _sidebarItemWithBadge({
+    required IconData icon, required String label,
+    required bool isSelected, required String doctorId,
+    required VoidCallback onTap,
+  }) {
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('secretary_notes')
+          .child(doctorId)
+          .onValue,
+      builder: (_, snap) {
+        int unread = 0;
+        if (snap.hasData && snap.data!.snapshot.value != null) {
+          final map = snap.data!.snapshot.value as Map;
+          unread = map.values
+              .where((v) => (v['read'] ?? false) != true)
+              .length;
+        }
+
+        return InkWell(
+          onTap: onTap,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 3),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? const Color(0xFF2563EB)
+                  : Colors.transparent,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(icon,
+                    color: isSelected ? Colors.white : Colors.grey[600],
+                    size: 20),
+                  if (unread > 0)
+                    Positioned(
+                      top: -5, right: -7,
+                      child: _PulseBadge(count: unread),
+                    ),
+                ],
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(label, style: TextStyle(
+                  color: isSelected ? Colors.white : Colors.grey[600],
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  fontSize: 14,
+                )),
+              ),
+              if (unread > 0 && !isSelected)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(24),
-                    boxShadow: [
-                      BoxShadow(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.15),
-                        blurRadius: 40,
-                        offset: const Offset(0, 16),
+                    color: const Color(0xFF8B5CF6).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    '$unread',
+                    style: const TextStyle(
+                      color: Color(0xFF8B5CF6),
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PULSE BADGE (animated red/purple dot)
+// ═══════════════════════════════════════════════════════════════════
+
+class _PulseBadge extends StatefulWidget {
+  final int count;
+  const _PulseBadge({required this.count});
+  @override
+  State<_PulseBadge> createState() => _PulseBadgeState();
+}
+
+class _PulseBadgeState extends State<_PulseBadge>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double>   _scale, _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _scale   = Tween<double>(begin: 1.0, end: 1.35)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+    _opacity = Tween<double>(begin: 0.8, end: 0.3)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+
+  @override
+  void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 18, height: 18,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Pulse ring
+          AnimatedBuilder(
+            animation: _ctrl,
+            builder: (_, __) => Transform.scale(
+              scale: _scale.value,
+              child: Opacity(
+                opacity: _opacity.value,
+                child: Container(
+                  width: 14, height: 14,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF8B5CF6),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Solid badge
+          Container(
+            width: 14, height: 14,
+            alignment: Alignment.center,
+            decoration: const BoxDecoration(
+              color: Color(0xFF8B5CF6),
+              shape: BoxShape.circle,
+            ),
+            child: widget.count > 9
+                ? const Text('9+',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 6,
+                      fontWeight: FontWeight.bold,
+                    ))
+                : Text('${widget.count}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 8,
+                      fontWeight: FontWeight.bold,
+                    )),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  SECRETARY DASHBOARD CONTENT  (unchanged – copied as-is)
+// ═══════════════════════════════════════════════════════════════════
+
+class _SecretaryDashboardContent extends StatefulWidget {
+  final String?   doctorId;
+  final String    secretaryName;
+  final void Function(int) onNavigate;
+  const _SecretaryDashboardContent({
+    required this.doctorId,
+    required this.secretaryName,
+    required this.onNavigate,
+  });
+  @override State<_SecretaryDashboardContent> createState() =>
+      _SecretaryDashboardContentState();
+}
+
+class _SecretaryDashboardContentState
+    extends State<_SecretaryDashboardContent> {
+
+  // ── notification banner at top of dashboard ─────────────────────────
+  Widget _buildNotifBanner() {
+    if (widget.doctorId == null) return const SizedBox.shrink();
+    return StreamBuilder<DatabaseEvent>(
+      stream: FirebaseDatabase.instance
+          .ref('secretary_notes')
+          .child(widget.doctorId!)
+          .onValue,
+      builder: (_, snap) {
+        if (!snap.hasData || snap.data!.snapshot.value == null)
+          return const SizedBox.shrink();
+
+        final map   = snap.data!.snapshot.value as Map;
+        final unread = map.values
+            .where((v) => (v['read'] ?? false) != true)
+            .toList();
+
+        if (unread.isEmpty) return const SizedBox.shrink();
+
+        // Latest unread
+        final latest = unread.reduce((a, b) =>
+            (a['timestamp'] ?? 0) > (b['timestamp'] ?? 0) ? a : b);
+
+        return GestureDetector(
+          onTap: () => widget.onNavigate(5), // → notes page
+          child: TweenAnimationBuilder<double>(
+            tween: Tween(begin: 0, end: 1),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOut,
+            builder: (_, v, child) => Opacity(
+              opacity: v,
+              child: Transform.translate(
+                offset: Offset(0, -12 * (1 - v)),
+                child: child,
+              ),
+            ),
+            child: Container(
+              margin: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 20, vertical: 14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF8B5CF6).withOpacity(0.35),
+                    blurRadius: 20,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  // Icon with pulse
+                  Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(Icons.mail_outlined,
+                          color: Colors.white, size: 22),
+                      ),
+                      Positioned(
+                        top: -4, right: -4,
+                        child: _PulseBadge(count: unread.length),
                       ),
                     ],
                   ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Header
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF8B5CF6),
-                          borderRadius: BorderRadius.vertical(
-                            top: Radius.circular(24)),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: const Icon(Icons.mark_email_read_outlined,
-                                color: Colors.white, size: 20),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Text('Note du Médecin',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  Text(
-                                    data['title'] ?? '',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    maxLines: 2,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ],
-                              ),
-                            ),
-                            GestureDetector(
-                              onTap: () => Navigator.pop(ctx),
-                              child: Container(
-                                padding: const EdgeInsets.all(6),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.15),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(Icons.close,
-                                  color: Colors.white, size: 18),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Content
-                      Padding(
-                        padding: const EdgeInsets.all(24),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Timestamp
-                            Row(
-                              children: [
-                                Icon(Icons.access_time_outlined,
-                                  size: 14, color: Colors.grey.shade400),
-                                const SizedBox(width: 6),
-                                Text(
-                                  _fmt(data['timestamp']),
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.grey.shade500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 16),
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.all(16),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFF8F5FF),
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(
-                                  color: const Color(0xFF8B5CF6).withOpacity(0.15)),
-                              ),
-                              child: Text(
-                                data['content'] ?? '',
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF1E293B),
-                                  height: 1.6,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      // Footer
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.pop(ctx),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B5CF6),
-                              padding: const EdgeInsets.symmetric(vertical: 14),
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12)),
-                            ),
-                            child: const Text('Fermer',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
+                  const SizedBox(width: 16),
+                  // Text
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          unread.length == 1
+                              ? '1 nouvelle note du médecin'
+                              : '${unread.length} nouvelles notes du médecin',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 2),
+                        Text(
+                          '"${latest['title'] ?? ''}"',
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.8),
+                            fontSize: 12,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Arrow
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.arrow_forward_rounded,
+                      color: Colors.white, size: 18),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _showNewAppointmentDialog() {
+    final nameCtrl = TextEditingController();
+    final dateCtrl = TextEditingController();
+    final timeCtrl = TextEditingController();
+    String type = 'Consultation';
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(builder: (ctx, setDlg) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Nouveau Rendez-vous',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SizedBox(width: 400, child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            _field(nameCtrl, 'Nom du patient', Icons.person_outline),
+            const SizedBox(height: 12),
+            TextField(
+              controller: dateCtrl, readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Date',
+                prefixIcon: const Icon(Icons.calendar_today_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+                filled: true, fillColor: const Color(0xFFF8FAFC),
+              ),
+              onTap: () async {
+                final d = await showDatePicker(context: ctx,
+                  initialDate: DateTime.now(),
+                  firstDate:   DateTime(2024),
+                  lastDate:    DateTime(2030));
+                if (d != null)
+                  dateCtrl.text = DateFormat('yyyy-MM-dd').format(d);
+              },
+            ),
+            const SizedBox(height: 12),
+            _field(timeCtrl, 'Heure (ex: 09:30)',
+              Icons.access_time_outlined),
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: type,
+              decoration: InputDecoration(labelText: 'Type',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+                filled: true, fillColor: const Color(0xFFF8FAFC)),
+              items: ['Consultation', 'Controle', 'Urgence']
+                  .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                  .toList(),
+              onChanged: (v) => setDlg(() => type = v!),
+            ),
+          ]),
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler')),
+          _blueBtn('Enregistrer', () async {
+            if (nameCtrl.text.isEmpty || dateCtrl.text.isEmpty) return;
+            await FirebaseFirestore.instance
+                .collection('appointments')
+                .add({
+              'patientName': nameCtrl.text.trim(),
+              'date':        dateCtrl.text,
+              'time':        timeCtrl.text.trim(),
+              'type':        type,
+              'doctorId':    widget.doctorId,
+              'status':      'en_attente',
+              'createdAt':   FieldValue.serverTimestamp(),
+            });
+            if (mounted) Navigator.pop(ctx);
+          }),
+        ],
+      )),
+    );
+  }
+
+  void _showNewPatientDialog() {
+    final firstCtrl   = TextEditingController();
+    final lastCtrl    = TextEditingController();
+    final emailCtrl   = TextEditingController();
+    final phoneCtrl   = TextEditingController();
+    final birthCtrl   = TextEditingController();
+    final addressCtrl = TextEditingController();
+    String blood = 'A+'; String gender = 'Homme'; bool loading = false;
+    showDialog(
+      context: context,
+      builder: (_) => StatefulBuilder(builder: (ctx, setDlg) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20)),
+        title: const Text('Nouveau Patient',
+          style: TextStyle(fontWeight: FontWeight.bold)),
+        content: SizedBox(width: 460, child: SingleChildScrollView(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Row(children: [
+              Expanded(child: _field(firstCtrl, 'Prénom', Icons.person_outline)),
+              const SizedBox(width: 12),
+              Expanded(child: _field(lastCtrl,  'Nom',    Icons.person_outline)),
+            ]),
+            const SizedBox(height: 12),
+            _field(emailCtrl, 'Email', Icons.email_outlined),
+            const SizedBox(height: 12),
+            _field(phoneCtrl, 'Téléphone', Icons.phone_outlined),
+            const SizedBox(height: 12),
+            TextField(
+              controller: birthCtrl, readOnly: true,
+              decoration: InputDecoration(
+                labelText: 'Date de naissance',
+                prefixIcon: const Icon(Icons.cake_outlined),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10)),
+                filled: true, fillColor: const Color(0xFFF8FAFC)),
+              onTap: () async {
+                final d = await showDatePicker(context: ctx,
+                  initialDate: DateTime(1990),
+                  firstDate:   DateTime(1930),
+                  lastDate:    DateTime.now());
+                if (d != null)
+                  birthCtrl.text = DateFormat('dd/MM/yyyy').format(d);
+              },
+            ),
+            const SizedBox(height: 12),
+            Row(children: [
+              Expanded(child: DropdownButtonFormField<String>(
+                value: gender,
+                decoration: InputDecoration(labelText: 'Genre',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                  filled: true, fillColor: const Color(0xFFF8FAFC)),
+                items: ['Homme', 'Femme']
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                    .toList(),
+                onChanged: (v) => setDlg(() => gender = v!),
+              )),
+              const SizedBox(width: 12),
+              Expanded(child: DropdownButtonFormField<String>(
+                value: blood,
+                decoration: InputDecoration(labelText: 'Groupe sanguin',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                  filled: true, fillColor: const Color(0xFFF8FAFC)),
+                items: ['A+','A-','B+','B-','AB+','AB-','O+','O-']
+                    .map((e) => DropdownMenuItem(value: e, child: Text(e)))
+                    .toList(),
+                onChanged: (v) => setDlg(() => blood = v!),
+              )),
+            ]),
+            const SizedBox(height: 12),
+            _field(addressCtrl, 'Adresse', Icons.location_on_outlined),
+          ]),
+        )),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler')),
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: CircularProgressIndicator())
+          else
+            _blueBtn('Enregistrer', () async {
+              if (firstCtrl.text.isEmpty || lastCtrl.text.isEmpty) return;
+              setDlg(() => loading = true);
+              await FirebaseDatabase.instance.ref('users').push().set({
+                'first_name': firstCtrl.text.trim(),
+                'last_name':  lastCtrl.text.trim(),
+                'email':      emailCtrl.text.trim(),
+                'phone':      phoneCtrl.text.trim(),
+                'birth_date': birthCtrl.text,
+                'gender':     gender,
+                'blood_type': blood,
+                'address':    addressCtrl.text.trim(),
+                'role':       'patient',
+                'doctorId':   widget.doctorId,
+                'createdAt':  ServerValue.timestamp,
+              });
+              if (mounted) Navigator.pop(ctx);
+            }),
+        ],
+      )),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hour = DateTime.now().hour;
+    final greeting = hour < 12
+        ? 'Bonjour'
+        : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(36),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        // Greeting
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('$greeting, ${widget.secretaryName} 👋',
+              style: const TextStyle(
+                fontSize: 26,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              )),
+            const SizedBox(height: 4),
+            Text(
+              DateFormat('EEEE d MMMM yyyy', 'fr_FR').format(DateTime.now()),
+              style: const TextStyle(color: Colors.grey, fontSize: 14)),
+          ]),
+        ]),
+        const SizedBox(height: 24),
+
+        // ── NOTIFICATION BANNER ────────────────────────────────────────
+        _buildNotifBanner(),
+
+        // Quick actions
+        const Text('Actions Rapides',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF1E293B),
+          )),
+        const SizedBox(height: 16),
+        Row(children: [
+          _ParticleButton(
+            label: 'Nouveau\nRendez-vous',
+            icon: Icons.add_circle_outline,
+            color: const Color(0xFF2563EB),
+            onTap: _showNewAppointmentDialog),
+          const SizedBox(width: 16),
+          _ParticleButton(
+            label: 'Nouveau Patient',
+            icon: Icons.person_add_outlined,
+            color: const Color(0xFF10B981),
+            onTap: _showNewPatientDialog),
+          const SizedBox(width: 16),
+          _ParticleButton(
+            label: "Liste d'Attente",
+            icon: Icons.access_time_outlined,
+            color: const Color(0xFFEA580C),
+            onTap: () => widget.onNavigate(2)),
+          const SizedBox(width: 16),
+          _ParticleButton(
+            label: 'Facturation',
+            icon: Icons.receipt_long_outlined,
+            color: const Color(0xFF7C3AED),
+            onTap: () => widget.onNavigate(4)),
+        ]),
+        const SizedBox(height: 36),
+        _StatsRow(doctorId: widget.doctorId),
+        const SizedBox(height: 36),
+        Row(children: [
+          const Expanded(
+            child: Text("Rendez-vous d'Aujourd'hui",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1E293B),
+              ))),
+          TextButton.icon(
+            onPressed: () => widget.onNavigate(1),
+            icon: const Icon(Icons.arrow_forward, size: 16),
+            label: const Text('Voir tout'),
+          ),
+        ]),
+        const SizedBox(height: 12),
+        _TodayAppointments(doctorId: widget.doctorId),
+      ]),
+    );
+  }
+
+  Widget _field(TextEditingController ctrl, String label, IconData icon) =>
+      TextField(
+        controller: ctrl,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixIcon: Icon(icon, size: 20),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+          filled: true, fillColor: const Color(0xFFF8FAFC),
+        ),
+      );
+
+  Widget _blueBtn(String label, VoidCallback onTap) => ElevatedButton(
+    onPressed: onTap,
+    style: ElevatedButton.styleFrom(
+      backgroundColor: const Color(0xFF2563EB),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+    ),
+    child: Text(label, style: const TextStyle(color: Colors.white)),
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PARTICLE BUTTON  (unchanged)
+// ═══════════════════════════════════════════════════════════════════
+
+class _ParticleButton extends StatefulWidget {
+  final String label; final IconData icon;
+  final Color color;  final VoidCallback onTap;
+  const _ParticleButton({
+    required this.label, required this.icon,
+    required this.color, required this.onTap,
+  });
+  @override State<_ParticleButton> createState() => _ParticleButtonState();
+}
+
+class _ParticleButtonState extends State<_ParticleButton>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double>   _scale;
+  bool _showParticles = false;
+  final List<_Particle> _particles = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl  = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 200));
+    _scale = Tween<double>(begin: 1.0, end: 0.93)
+        .animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
+  }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  void _burst() {
+    setState(() {
+      _showParticles = true; _particles.clear();
+      for (int i = 0; i < 8; i++)
+        _particles.add(_Particle(color: widget.color, index: i));
+    });
+    Future.delayed(const Duration(milliseconds: 700), () {
+      if (mounted) setState(() => _showParticles = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: GestureDetector(
+        onTapDown: (_) => _ctrl.forward(),
+        onTapUp:   (_) { _ctrl.reverse(); _burst(); widget.onTap(); },
+        onTapCancel: () => _ctrl.reverse(),
+        child: AnimatedBuilder(
+          animation: _scale,
+          builder: (_, child) =>
+              Transform.scale(scale: _scale.value, child: child),
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  vertical: 22, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: widget.color.withOpacity(0.18)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: widget.color.withOpacity(0.12),
+                      blurRadius: 16,
+                      offset: const Offset(0, 6)),
+                  ],
+                ),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: widget.color.withOpacity(0.1),
+                      shape: BoxShape.circle),
+                    child: Icon(widget.icon,
+                      color: widget.color, size: 28),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(widget.label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: widget.color,
+                    )),
+                ]),
+              ),
+              if (_showParticles)
+                ..._particles.map((p) => _ParticleWidget(particle: p)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _Particle {
+  final Color color; final double angle, distance, size;
+  _Particle({required Color color, required int index})
+      : color    = color,
+        angle    = (index / 8) * 2 * 3.14159,
+        distance = 40 + (index % 3) * 15.0,
+        size     = 5  + (index % 3) * 3.0;
+}
+
+class _ParticleWidget extends StatefulWidget {
+  final _Particle particle;
+  const _ParticleWidget({required this.particle});
+  @override State<_ParticleWidget> createState() => _ParticleWidgetState();
+}
+
+class _ParticleWidgetState extends State<_ParticleWidget>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _ctrl;
+  late Animation<double>   _progress, _opacity;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 600));
+    _progress = CurvedAnimation(parent: _ctrl, curve: Curves.easeOut);
+    _opacity  = Tween<double>(begin: 1, end: 0).animate(
+        CurvedAnimation(parent: _ctrl,
+            curve: const Interval(0.5, 1.0)));
+    _ctrl.forward();
+  }
+  @override void dispose() { _ctrl.dispose(); super.dispose(); }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, __) {
+        final dx = widget.particle.distance * _progress.value *
+            math.cos(widget.particle.angle);
+        final dy = widget.particle.distance * _progress.value *
+            math.sin(widget.particle.angle);
+        return Positioned(
+          left: 0, right: 0, top: 0, bottom: 0,
+          child: Align(
+            alignment: Alignment.center,
+            child: Transform.translate(
+              offset: Offset(dx, dy),
+              child: Opacity(
+                opacity: _opacity.value.clamp(0.0, 1.0),
+                child: Container(
+                  width:  widget.particle.size,
+                  height: widget.particle.size,
+                  decoration: BoxDecoration(
+                    color: widget.particle.color.withOpacity(0.8),
+                    shape: BoxShape.circle,
                   ),
                 ),
               ),
@@ -252,333 +996,228 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
       },
     );
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  STATS ROW  (unchanged)
+// ═══════════════════════════════════════════════════════════════════
+
+class _StatsRow extends StatelessWidget {
+  final String? doctorId;
+  const _StatsRow({required this.doctorId});
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+    if (doctorId == null) {
+      return Row(children: [
+        _stat("Aujourd'hui", '—', 'Rendez-vous', const Color(0xFF2563EB)),
+        const SizedBox(width: 14),
+        _stat('Total',      '—', 'Rendez-vous', const Color(0xFF10B981)),
+        const SizedBox(width: 14),
+        _stat('En Attente', '—', 'À confirmer', const Color(0xFFEA580C)),
+        const SizedBox(width: 14),
+        _stat('Patients',   '—', 'Enregistrés', const Color(0xFF7C3AED)),
+      ]);
     }
-    if (_doctorId == null) {
-      return const Center(
-        child: Text('Aucun médecin associé à ce compte.'));
-    }
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('appointments')
+          .where('doctorId', isEqualTo: doctorId)
+          .snapshots(),
+      builder: (_, snap) {
+        if (snap.connectionState == ConnectionState.waiting && !snap.hasData) {
+          return Row(children: [
+            _stat("Aujourd'hui", '…', 'Rendez-vous', const Color(0xFF2563EB)),
+            const SizedBox(width: 14),
+            _stat('Total',      '…', 'Rendez-vous', const Color(0xFF10B981)),
+            const SizedBox(width: 14),
+            _stat('En Attente', '…', 'À confirmer', const Color(0xFFEA580C)),
+            const SizedBox(width: 14),
+            _stat('Patients',   '—', 'Enregistrés', const Color(0xFF7C3AED)),
+          ]);
+        }
+        final all     = snap.data?.docs ?? [];
+        final total   = all.length;
+        final todayRdv = all.where((d) =>
+            (d.data() as Map)['date']?.toString().startsWith(today) == true)
+            .length;
+        final waiting = all.where((d) {
+          final s = ((d.data() as Map)['status'] ?? '').toString().toLowerCase();
+          return s == 'en_attente' || s == 'en-attente' || s == 'pending';
+        }).length;
+        return Row(children: [
+          _stat("Aujourd'hui", todayRdv.toString(), 'Rendez-vous',
+              const Color(0xFF2563EB)),
+          const SizedBox(width: 14),
+          _stat('Total', total.toString(), 'Rendez-vous',
+              const Color(0xFF10B981)),
+          const SizedBox(width: 14),
+          _stat('En Attente', waiting.toString(), 'À confirmer',
+              const Color(0xFFEA580C)),
+          const SizedBox(width: 14),
+          _stat('Patients', '—', 'Enregistrés', const Color(0xFF7C3AED)),
+        ]);
+      },
+    );
+  }
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FE),
-      body: StreamBuilder<DatabaseEvent>(
-        stream: _db.child('secretary_notes').child(_doctorId!).onValue,
-        builder: (context, snap) {
-          // ── Loading ──
-          if (snap.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
-          }
-
-          final isEmpty =
-              !snap.hasData || snap.data!.snapshot.value == null;
-
-          final List<MapEntry<dynamic, dynamic>> entries = isEmpty
-              ? []
-              : (snap.data!.snapshot.value as Map)
-                  .entries
-                  .toList()
-                ..sort((a, b) =>
-                    (b.value['timestamp'] ?? 0)
-                        .compareTo(a.value['timestamp'] ?? 0));
-
-          final unreadCount =
-              entries.where((e) => (e.value['read'] ?? false) != true).length;
-
-          return CustomScrollView(
-            slivers: [
-              // ── Header ──────────────────────────────────────────────
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(32, 32, 32, 24),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Icon + title
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF8B5CF6).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Icon(Icons.mail_outlined,
-                          color: Color(0xFF8B5CF6), size: 28),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Text('Notes du Médecin',
-                                  style: TextStyle(
-                                    fontSize: 26,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFF1E293B),
-                                  ),
-                                ),
-                                if (unreadCount > 0) ...[
-                                  const SizedBox(width: 10),
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 10, vertical: 3),
-                                    decoration: BoxDecoration(
-                                      color: const Color(0xFF8B5CF6),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Text(
-                                      '$unreadCount non lue${unreadCount > 1 ? 's' : ''}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            const Text(
-                              'Messages envoyés par votre médecin',
-                              style: TextStyle(color: Colors.grey, fontSize: 14),
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Mark all read
-                      if (unreadCount > 0)
-                        TextButton.icon(
-                          onPressed: () => _markAllRead(entries),
-                          icon: const Icon(Icons.done_all,
-                            color: Color(0xFF8B5CF6), size: 18),
-                          label: const Text('Tout marquer lu',
-                            style: TextStyle(
-                              color: Color(0xFF8B5CF6),
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── Empty state ──────────────────────────────────────────
-              if (isEmpty)
-                SliverFillRemaining(
-                  child: Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(24),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.07),
-                            shape: BoxShape.circle,
-                          ),
-                          child: const Icon(Icons.mail_outline,
-                            size: 48, color: Color(0xFF8B5CF6)),
-                        ),
-                        const SizedBox(height: 16),
-                        const Text('Aucune note reçue',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF64748B),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Les notes envoyées par le médecin\napparaîtront ici.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey, fontSize: 13),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              else
-                // ── Notes list ──────────────────────────────────────────
-                SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(32, 0, 32, 32),
-                  sliver: SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (_, i) {
-                        final key  = entries[i].key.toString();
-                        final data = Map<String, dynamic>.from(entries[i].value);
-                        final isUnread = (data['read'] ?? false) != true;
-
-                        return TweenAnimationBuilder<double>(
-                          tween: Tween(begin: 0, end: 1),
-                          duration: Duration(milliseconds: 250 + i * 60),
-                          curve: Curves.easeOut,
-                          builder: (_, v, child) => Opacity(
-                            opacity: v,
-                            child: Transform.translate(
-                              offset: Offset(0, 20 * (1 - v)),
-                              child: child,
-                            ),
-                          ),
-                          child: GestureDetector(
-                            onTap: () => _openNote(context, key, data),
-                            child: Container(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              padding: const EdgeInsets.all(18),
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: isUnread
-                                      ? const Color(0xFF8B5CF6).withOpacity(0.4)
-                                      : Colors.grey.shade100,
-                                  width: isUnread ? 1.5 : 1,
-                                ),
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: isUnread
-                                        ? const Color(0xFF8B5CF6).withOpacity(0.08)
-                                        : Colors.black.withOpacity(0.03),
-                                    blurRadius: 12,
-                                    offset: const Offset(0, 4),
-                                  ),
-                                ],
-                              ),
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // Unread indicator dot
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 5, right: 12),
-                                    child: AnimatedContainer(
-                                      duration: const Duration(milliseconds: 300),
-                                      width: 9,
-                                      height: 9,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: isUnread
-                                            ? const Color(0xFF8B5CF6)
-                                            : Colors.transparent,
-                                        border: Border.all(
-                                          color: isUnread
-                                              ? const Color(0xFF8B5CF6)
-                                              : Colors.grey.shade300,
-                                          width: 1.5,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-
-                                  // Content
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        // Title row
-                                        Row(
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                data['title'] ?? '',
-                                                style: TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: isUnread
-                                                      ? FontWeight.bold
-                                                      : FontWeight.w600,
-                                                  color: isUnread
-                                                      ? const Color(0xFF1E293B)
-                                                      : const Color(0xFF64748B),
-                                                ),
-                                                maxLines: 1,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 8),
-                                            if (isUnread)
-                                              Container(
-                                                padding: const EdgeInsets.symmetric(
-                                                  horizontal: 8, vertical: 2),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFF8B5CF6)
-                                                      .withOpacity(0.1),
-                                                  borderRadius:
-                                                      BorderRadius.circular(20),
-                                                ),
-                                                child: const Text('Nouveau',
-                                                  style: TextStyle(
-                                                    color: Color(0xFF8B5CF6),
-                                                    fontSize: 10,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 5),
-
-                                        // Preview
-                                        Text(
-                                          data['content'] ?? '',
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade500,
-                                            height: 1.4,
-                                          ),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        const SizedBox(height: 8),
-
-                                        // Time + open hint
-                                        Row(
-                                          children: [
-                                            Icon(Icons.access_time_outlined,
-                                              size: 12,
-                                              color: Colors.grey.shade400),
-                                            const SizedBox(width: 4),
-                                            Text(
-                                              _fmt(data['timestamp']),
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: Colors.grey.shade400,
-                                              ),
-                                            ),
-                                            const Spacer(),
-                                            Text('Appuyer pour lire →',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                color: const Color(0xFF8B5CF6)
-                                                    .withOpacity(0.7),
-                                                fontStyle: FontStyle.italic,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      childCount: entries.length,
-                    ),
-                  ),
-                ),
-            ],
-          );
-        },
+  Widget _stat(String label, String value, String sub, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0xFFE5E7EB)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(label,
+            style: const TextStyle(color: Colors.grey, fontSize: 12)),
+          const SizedBox(height: 6),
+          Text(value,
+            style: TextStyle(
+              fontSize: 28, fontWeight: FontWeight.bold, color: color)),
+          Text(sub,
+            style: const TextStyle(color: Colors.grey, fontSize: 11)),
+        ]),
       ),
     );
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  TODAY APPOINTMENTS  (unchanged)
+// ═══════════════════════════════════════════════════════════════════
+
+class _TodayAppointments extends StatefulWidget {
+  final String? doctorId;
+  const _TodayAppointments({required this.doctorId});
+  @override State<_TodayAppointments> createState() =>
+      _TodayAppointmentsState();
+}
+
+class _TodayAppointmentsState extends State<_TodayAppointments> {
+  Stream<QuerySnapshot>? _stream;
+
+  @override
+  void initState() { super.initState(); _loadStream(); }
+
+  Future<void> _loadStream() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    final doc = await FirebaseFirestore.instance
+        .collection('users').doc(uid).get();
+    final dId = doc.data()?['doctorId'] as String?;
+    if (dId == null || dId.isEmpty) return;
+    if (mounted) {
+      setState(() {
+        _stream = FirebaseFirestore.instance
+            .collection('appointments')
+            .where('doctorId', isEqualTo: dId)
+            .snapshots();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+    if (_stream == null) {
+      return _box(child: const Center(
+        child: Text("Chargement…",
+          style: TextStyle(color: Colors.grey))));
+    }
+    return StreamBuilder<QuerySnapshot>(
+      stream: _stream,
+      builder: (_, snap) {
+        if (snap.hasError) {
+          return _box(child: const Center(
+            child: Text("Erreur de chargement",
+              style: TextStyle(color: Colors.red))));
+        }
+        if (!snap.hasData) {
+          return _box(child: const Center(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: CircularProgressIndicator(
+                color: Color(0xFF2563EB)))));
+        }
+        final docs = snap.data!.docs.where((d) =>
+            (d.data() as Map)['date']?.toString().startsWith(today) == true)
+            .toList()
+          ..sort((a, b) {
+            final ta = (a.data() as Map)['time']?.toString() ?? '';
+            final tb = (b.data() as Map)['time']?.toString() ?? '';
+            return ta.compareTo(tb);
+          });
+
+        if (docs.isEmpty) {
+          return _box(child: const Center(
+            child: Padding(padding: EdgeInsets.all(24),
+              child: Text("Aucun rendez-vous aujourd'hui",
+                style: TextStyle(color: Colors.grey)))));
+        }
+        return _box(child: Column(
+          children: docs.map((doc) {
+            final d      = doc.data() as Map<String, dynamic>;
+            final status = (d['status'] ?? 'en_attente').toString();
+            final color  = status == 'confirme' || status == 'confirmé'
+                ? const Color(0xFF10B981)
+                : status == 'annule' || status == 'annulé'
+                    ? const Color(0xFFEF4444)
+                    : const Color(0xFFEA580C);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8F9FB),
+                borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                Container(width: 4, height: 40,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(2))),
+                const SizedBox(width: 14),
+                Expanded(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(d['patientName'] ?? 'Inconnu',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold, fontSize: 14)),
+                    Text('${d['time'] ?? '--'}  •  ${d['type'] ?? '--'}',
+                      style: const TextStyle(
+                        color: Colors.grey, fontSize: 12)),
+                  ],
+                )),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20)),
+                  child: Text(status,
+                    style: TextStyle(
+                      color: color,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12)),
+                ),
+              ]),
+            );
+          }).toList(),
+        ));
+      },
+    );
+  }
+
+  Widget _box({required Widget child}) => Container(
+    padding: const EdgeInsets.all(24),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      border: Border.all(color: const Color(0xFFE5E7EB)),
+    ),
+    child: child,
+  );
 }
