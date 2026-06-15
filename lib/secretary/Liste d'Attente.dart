@@ -90,7 +90,7 @@ class _WaitingListPageState extends State<WaitingListPage> {
                   ]));
                 }
 
-                // حساب العدادات بدقة بناءً على المواعيد الكلية لليوم
+                // حساب العدادات بدقة بناءعيد الكلية لليوم
                 final totalTodayCount = allDocs.where((d) {
                   final data = d.data() as Map<String, dynamic>;
                   return (data['date'] ?? '').toString().startsWith(today) && data['status'] != 'annule';
