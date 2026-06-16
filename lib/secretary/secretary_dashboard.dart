@@ -173,7 +173,7 @@ class _SecretaryDashboardState extends State<SecretaryDashboard> {
                   ),
                   const SizedBox(height: 40),
 
-                  // قائمة مواعيد اليوم
+                  // قائمة  اليوم
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(30),
