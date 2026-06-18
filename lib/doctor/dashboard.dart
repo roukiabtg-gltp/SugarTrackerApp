@@ -1,10 +1,5 @@
 // ════════════════════════════════════════════════════════════════════════
-// dashboard.dart — FIXED VERSION
-// الإصلاحات:
-//   1. يقرأ من doctors/{id}/alerts (نفس مصدر AlertsPage) بدل measurements
-//   2. يستخدم نفس معايير التصنيف تماماً (0.54 / 0.70 / 1.80 / 2.50)
-//   3. يتجاهل الإنذارات المحلولة (resolved == true)
-//   4. يقرأ SOS من doctors/{id}/emergencies (نفس المصدر)
+// dashboard.dart
 // ════════════════════════════════════════════════════════════════════════
 
 import 'package:flutter/material.dart';
@@ -25,13 +20,43 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
   final _fs = fst.FirebaseFirestore.instance;
   final String? _dId = FirebaseAuth.instance.currentUser?.uid;
 
-  // ✅ نفس حدود AlertsPage تماماً
+  String _doctorName = '';
+
   static const double _lowCritical  = 0.54;
   static const double _lowWarning   = 0.70;
   static const double _highWarning  = 1.80;
   static const double _highCritical = 2.50;
 
-  // ✅ نفس منطق التصنيف
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorName();
+  }
+
+  Future<void> _loadDoctorName() async {
+    if (_dId == null) return;
+    final doc = await _fs.collection('users').doc(_dId).get();
+    if (!mounted) return;
+    final data = doc.data() ?? {};
+    String name = '';
+    if ((data['name'] ?? '').toString().trim().isNotEmpty) {
+      name = data['name'].toString().trim();
+    } else {
+      final fn = data['first_name']?.toString() ?? '';
+      final ln = data['last_name']?.toString() ?? '';
+      name = '$fn $ln'.trim();
+    }
+    setState(() => _doctorName = name);
+  }
+
+  // ── تحية حسب الوقت ───────────────────────────────────────────────
+  String get _greeting {
+    final h = DateTime.now().hour;
+    if (h < 12) return 'Bonjour';
+    if (h < 18) return 'Bon après-midi';
+    return 'Bonsoir';
+  }
+
   String _classifySeverity(double v) {
     if (v < _lowCritical || v > _highCritical) return 'critical';
     if (v < _lowWarning  || v > _highWarning)  return 'warning';
@@ -69,8 +94,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
   }
 
   String _initials(String name) {
-    final parts =
-        name.trim().split(' ').where((w) => w.isNotEmpty).toList();
+    final parts = name.trim().split(' ').where((w) => w.isNotEmpty).toList();
     if (parts.isEmpty) return '?';
     if (parts.length == 1) return parts[0][0].toUpperCase();
     return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
@@ -84,7 +108,6 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FE),
       body: StreamBuilder<DatabaseEvent>(
-        // ── 1. قائمة المرضى ──────────────────────────────────────────
         stream: _db.child('users').orderByChild('doctorId').equalTo(_dId).onValue,
         builder: (_, usersSnap) {
           if (usersSnap.connectionState == ConnectionState.waiting) {
@@ -94,38 +117,31 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
           final patientsMap = <String, Map<String, dynamic>>{};
           if (usersSnap.hasData && usersSnap.data!.snapshot.value != null) {
             (usersSnap.data!.snapshot.value as Map).forEach((k, v) {
-              if (v is Map) patientsMap[k.toString()] = Map<String, dynamic>.from(v);
+              if (v is Map)
+                patientsMap[k.toString()] = Map<String, dynamic>.from(v);
             });
           }
           final patientIds = patientsMap.keys.toList();
 
           return StreamBuilder<DatabaseEvent>(
-            // ── 2. ✅ إنذارات السكر من نفس مصدر AlertsPage ──────────
             stream: _db.child('doctors/$_dId/alerts').onValue,
             builder: (_, alertsSnap) {
               int critCount = 0, warnCount = 0;
-
               if (alertsSnap.hasData &&
                   alertsSnap.data!.snapshot.value != null) {
                 final rawAlerts = Map<dynamic, dynamic>.from(
                     alertsSnap.data!.snapshot.value as Map);
-
                 for (final e in rawAlerts.entries) {
                   final data = Map<String, dynamic>.from(e.value);
-
-                  // ✅ تجاهل المحلولة
                   if (data['resolved'] == true) continue;
-
                   final glucose = _parseGlucose(data['glucose']);
                   final severity = _classifySeverity(glucose);
-
                   if (severity == 'critical') critCount++;
                   else if (severity == 'warning') warnCount++;
                 }
               }
 
               return StreamBuilder<DatabaseEvent>(
-                // ── 3. ✅ SOS من نفس مصدر AlertsPage ────────────────
                 stream: _db.child('doctors/$_dId/emergencies').onValue,
                 builder: (_, sosSnap) {
                   int sosCount = 0;
@@ -139,7 +155,6 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                   }
 
                   return StreamBuilder<fst.QuerySnapshot>(
-                    // ── 4. مواعيد اليوم ──────────────────────────────
                     stream: _fs
                         .collection('appointments')
                         .where('doctorId', isEqualTo: _dId)
@@ -157,7 +172,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            // ── Header ───────────────────────────────
+                            // ── Header ─────────────────────────────────
                             Row(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -165,11 +180,16 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                 Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text('Dashboard',
-                                        style: TextStyle(
-                                            fontSize: 28,
-                                            fontWeight: FontWeight.bold,
-                                            color: Color(0xFF1A237E))),
+                                    // ── تحية شخصية ──────────────────
+                                    Text(
+                                      _doctorName.isNotEmpty
+                                          ? '$_greeting, Dr. $_doctorName 👋'
+                                          : '$_greeting 👋',
+                                      style: const TextStyle(
+                                          fontSize: 26,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1A237E)),
+                                    ),
                                     const SizedBox(height: 4),
                                     Text(
                                       DateFormat('EEEE, MMMM d yyyy')
@@ -194,7 +214,6 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                 const Color(0xFFEFF6FF),
                               ),
                               const SizedBox(width: 20),
-                              // ✅ Critical = إنذارات حرجة + SOS نشطة
                               _statCard(
                                 'Critical Alerts',
                                 '${critCount + sosCount}',
@@ -204,7 +223,6 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                 blink: critCount + sosCount > 0,
                               ),
                               const SizedBox(width: 20),
-                              // ✅ Warnings = إنذارات تحذيرية فقط
                               _statCard(
                                 'Warnings',
                                 '$warnCount',
@@ -223,7 +241,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                             ]),
                             const SizedBox(height: 28),
 
-                            // ── Today's Appointments ─────────────────
+                            // ── Today's Appointments ──────────────────
                             Container(
                               width: double.infinity,
                               padding: const EdgeInsets.all(24),
@@ -403,7 +421,8 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                                                         : Icons
                                                             .meeting_room_outlined,
                                                     size: 13,
-                                                    color: Colors.grey.shade500,
+                                                    color:
+                                                        Colors.grey.shade500,
                                                   ),
                                                   const SizedBox(width: 4),
                                                   Text(loc,
@@ -460,7 +479,8 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
       decoration: BoxDecoration(
         color: const Color(0xFFEEF2FF),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFF3B82F6).withOpacity(0.2)),
+        border: Border.all(
+            color: const Color(0xFF3B82F6).withOpacity(0.2)),
       ),
       child: Row(mainAxisSize: MainAxisSize.min, children: [
         const Icon(Icons.qr_code_2, color: Color(0xFF3B82F6), size: 22),
@@ -494,7 +514,8 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
               color: const Color(0xFF3B82F6).withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: const Icon(Icons.copy, size: 16, color: Color(0xFF3B82F6)),
+            child: const Icon(Icons.copy,
+                size: 16, color: Color(0xFF3B82F6)),
           ),
         ),
       ]),
@@ -502,7 +523,7 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
   }
 
   Widget _statCard(String title, String value, IconData icon, Color color,
-      Color bg, {bool blink = false}) =>
+          Color bg, {bool blink = false}) =>
       Expanded(
         child: Container(
           padding: const EdgeInsets.all(22),
@@ -516,45 +537,51 @@ class _ProfessionalDashboardState extends State<ProfessionalDashboard> {
                   offset: const Offset(0, 5))
             ],
           ),
-          child:
-              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                    color: bg, borderRadius: BorderRadius.circular(12)),
-                child: Icon(icon, color: color, size: 22),
-              ),
-              if (blink)
-                Container(
-                  width: 9,
-                  height: 9,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEF4444),
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                          color: const Color(0xFFEF4444).withOpacity(0.5),
-                          blurRadius: 6)
-                    ],
-                  ),
-                ),
-            ]),
-            const SizedBox(height: 16),
-            Text(value,
-                style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B))),
-            const SizedBox(height: 4),
-            Text(title,
-                style: const TextStyle(color: Colors.grey, fontSize: 12)),
-          ]),
+          child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                            color: bg,
+                            borderRadius: BorderRadius.circular(12)),
+                        child: Icon(icon, color: color, size: 22),
+                      ),
+                      if (blink)
+                        Container(
+                          width: 9,
+                          height: 9,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEF4444),
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                  color: const Color(0xFFEF4444)
+                                      .withOpacity(0.5),
+                                  blurRadius: 6)
+                            ],
+                          ),
+                        ),
+                    ]),
+                const SizedBox(height: 16),
+                Text(value,
+                    style: const TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF1E293B))),
+                const SizedBox(height: 4),
+                Text(title,
+                    style:
+                        const TextStyle(color: Colors.grey, fontSize: 12)),
+              ]),
         ),
       );
 }
 
-// ── Status Enum ──────────────────────────────────────────────────────────
+// ── Status Enum ──────────────────────────────────────────────────────
 enum _ApptStatus { confirmed, pending, cancelled }
 
 extension _ApptStatusExt on _ApptStatus {
@@ -565,6 +592,7 @@ extension _ApptStatusExt on _ApptStatus {
       case _ApptStatus.pending:   return const Color(0xFFF59E0B);
     }
   }
+
   Color get bgColor {
     switch (this) {
       case _ApptStatus.confirmed: return const Color(0xFFDCFCE7);
@@ -572,6 +600,7 @@ extension _ApptStatusExt on _ApptStatus {
       case _ApptStatus.pending:   return const Color(0xFFFEF3C7);
     }
   }
+
   String get label {
     switch (this) {
       case _ApptStatus.confirmed: return 'Confirmé';

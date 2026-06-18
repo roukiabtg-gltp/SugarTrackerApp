@@ -456,7 +456,7 @@ class _NotesPageState extends State<NotesPage>
       stream: _db.child('secretary_notes').child(doctorId!).onValue,
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+          return const Center(child: CircularProgressIndicator(color: Color(0xFF2563EB)));
         }
 
         final isEmpty = !snap.hasData || snap.data!.snapshot.value == null;
@@ -477,7 +477,7 @@ class _NotesPageState extends State<NotesPage>
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.info_outline, color: Color(0xFF8B5CF6), size: 18),
+                    const Icon(Icons.info_outline, color: Color(0xFF2563EB), size: 18),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -486,7 +486,7 @@ class _NotesPageState extends State<NotesPage>
                           'الملاحظات المرسلة هنا ستظهر في حساب السكريتير.',
                           'Les notes envoyées ici apparaîtront dans le compte de la secrétaire.',
                         ),
-                        style: const TextStyle(color: Color(0xFF8B5CF6), fontSize: 13),
+                        style: const TextStyle(color: Color(0xFF2563EB), fontSize: 13),
                       ),
                     ),
                   ],
@@ -591,7 +591,7 @@ class _NotesPageState extends State<NotesPage>
                             ),
                             child: Text(
                               t('Unread', 'غير مقروء', 'Non lu'),
-                              style: const TextStyle(color: Color(0xFF8B5CF6), fontSize: 10, fontWeight: FontWeight.bold),
+                              style: const TextStyle(color: Color(0xFF2563EB), fontSize: 10, fontWeight: FontWeight.bold),
                             ),
                           ),
                         const SizedBox(width: 8),

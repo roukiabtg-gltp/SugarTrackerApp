@@ -9,10 +9,10 @@ import 'Appointment.dart';
 import 'administration_page.dart';
 import 'notes.dart';
 import 'reports.dart';
-import 'settings_page.dart';                   // ← جديد
+import 'settings_page.dart';
 import '../desktop/auth/login_desktop.dart';
-import '../doctor_settings_notifier.dart';      // ← جديد
-import 'doctor_profile_page.dart';             // ← جديد
+import '../doctor_settings_notifier.dart';
+import 'doctor_profile_page.dart';
 
 class DoctorMainLayout extends StatefulWidget {
   const DoctorMainLayout({super.key});
@@ -24,6 +24,43 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
   int _selectedIndex = 0;
   final String? _uid = FirebaseAuth.instance.currentUser?.uid;
 
+  // ── بيانات الطبيب ────────────────────────────────────────────────
+  String  _doctorName      = 'Doctor';
+  String  _doctorSpecialty = 'Specialist';
+  String? _doctorPhoto;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDoctorInfo();
+  }
+
+  Future<void> _loadDoctorInfo() async {
+    if (_uid == null) return;
+    final doc = await fst.FirebaseFirestore.instance
+        .collection('users')
+        .doc(_uid)
+        .get();
+    if (!mounted) return;
+    final data = doc.data() ?? {};
+
+    // حاول تجيب الاسم من Firestore أولاً
+    String name = '';
+    if ((data['name'] ?? '').toString().trim().isNotEmpty) {
+      name = data['name'].toString().trim();
+    } else {
+      final fn = data['first_name']?.toString() ?? '';
+      final ln = data['last_name']?.toString() ?? '';
+      name = '$fn $ln'.trim();
+    }
+
+    setState(() {
+      _doctorName      = name.isNotEmpty ? name : 'Doctor';
+      _doctorSpecialty = data['specialty']?.toString() ?? 'Specialist';
+      _doctorPhoto     = data['photoUrl']?.toString();
+    });
+  }
+
   final List<Widget> _pages = [
     const ProfessionalDashboard(),
     const PatientsPage(),
@@ -32,8 +69,8 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     const NotesPage(),
     const ReportsPage(),
     const AdministrationPage(),
-    const SettingsPage(),               // ← index 7
-    const DoctorProfilePage(),          // ← index 8
+    const SettingsPage(),
+    const DoctorProfilePage(),
   ];
 
   @override
@@ -41,11 +78,11 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     return ValueListenableBuilder<Locale>(
       valueListenable: doctorLocale,
       builder: (context, locale, _) {
-        final isDark = doctorThemeMode.value == ThemeMode.dark;
-        final scale = doctorFontScale.value;
+        final isDark  = doctorThemeMode.value == ThemeMode.dark;
+        final scale   = doctorFontScale.value;
         final sidebarBg = isDark ? const Color(0xFF13151E) : Colors.white;
-        final divColor = isDark ? Colors.white12 : Colors.grey.shade200;
-        final lang = locale.languageCode;
+        final divColor  = isDark ? Colors.white12 : Colors.grey.shade200;
+        final lang  = locale.languageCode;
         final isRtl = lang == 'ar';
 
         return Directionality(
@@ -64,7 +101,9 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
                   children: [
                     DrawerHeader(
                       decoration: BoxDecoration(
-                        color: isDark ? const Color(0xFF0F172A) : const Color(0xFFE5E7EB),
+                        color: isDark
+                            ? const Color(0xFF0F172A)
+                            : const Color(0xFFE5E7EB),
                       ),
                       child: Text(
                         t('Menu', 'القائمة', 'Menu'),
@@ -79,14 +118,14 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
                       child: ListView(
                         padding: EdgeInsets.zero,
                         children: [
-                          _item(0, Icons.grid_view_rounded, t('Dashboard', 'لوحة التحكم', 'Tableau de bord'), isDark, scale),
-                          _item(1, Icons.people_outline_rounded, t('Patients', 'المرضى', 'Patients'), isDark, scale),
-                          _item(2, Icons.calendar_today_outlined, t('Appointments', 'المواعيد', 'Rendez-vous'), isDark, scale),
-                          _item(3, Icons.notifications_none_rounded, t('Alerts', 'التنبيهات', 'Alertes'), isDark, scale),
-                          _item(4, Icons.notes_outlined, t('Notes', 'الملاحظات', 'Notes'), isDark, scale),
-                          _item(5, Icons.bar_chart_outlined, t('Reports', 'التقارير', 'Rapports'), isDark, scale),
-                          _item(6, Icons.admin_panel_settings_outlined, t('Administration', 'الإدارة', 'Administration'), isDark, scale),
-                          _item(7, Icons.settings_outlined, t('Settings', 'الإعدادات', 'Paramètres'), isDark, scale),
+                          _item(0, Icons.grid_view_rounded,             t('Dashboard',      'لوحة التحكم', 'Tableau de bord'), isDark, scale),
+                          _item(1, Icons.people_outline_rounded,        t('Patients',       'المرضى',      'Patients'),        isDark, scale),
+                          _item(2, Icons.calendar_today_outlined,       t('Appointments',   'المواعيد',    'Rendez-vous'),     isDark, scale),
+                          _item(3, Icons.notifications_none_rounded,    t('Alerts',         'التنبيهات',   'Alertes'),         isDark, scale),
+                          _item(4, Icons.notes_outlined,                t('Notes',          'الملاحظات',   'Notes'),           isDark, scale),
+                          _item(5, Icons.bar_chart_outlined,            t('Reports',        'التقارير',    'Rapports'),        isDark, scale),
+                          _item(6, Icons.admin_panel_settings_outlined, t('Administration', 'الإدارة',     'Administration'),  isDark, scale),
+                          _item(7, Icons.settings_outlined,             t('Settings',       'الإعدادات',   'Paramètres'),      isDark, scale),
                         ],
                       ),
                     ),
@@ -106,44 +145,47 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
                   Padding(
                     padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
                     child: Row(children: [
-                      Icon(Icons.monitor_heart,
-                          color: const Color(0xFF1882FF), size: 32),
+                      const Icon(Icons.monitor_heart,
+                          color: Color(0xFF1882FF), size: 32),
                       const SizedBox(width: 12),
-                      Text(t('GlucoLink','جلوكولينك','GlucoLink'),
-                          style: TextStyle(
-                            fontSize: 20 * scale,
-                            fontWeight: FontWeight.bold,
-                            color: isDark ? Colors.white : const Color(0xFF0D1117),
-                          )),
+                      Text(
+                        t('GlucoLink', 'جلوكولينك', 'GlucoLink'),
+                        style: TextStyle(
+                          fontSize: 20 * scale,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : const Color(0xFF0D1117),
+                        ),
+                      ),
                     ]),
                   ),
 
                   const SizedBox(height: 16),
 
-                  // ── Nav items (scrollable) ─────────────────
+                  // ── Nav items ─────────────────────────────────────
                   Expanded(
                     child: SingleChildScrollView(
                       child: Column(children: [
-                        _item(0, Icons.grid_view_rounded,             t('Dashboard',      'لوحة التحكم',   'Tableau de bord'), isDark, scale),
-                        _item(1, Icons.people_outline_rounded,        t('Patients',       'المرضى',        'Patients'),        isDark, scale),
-                        _item(2, Icons.calendar_today_outlined,       t('Appointments',   'المواعيد',      'Rendez-vous'),     isDark, scale),
-                        _item(3, Icons.notifications_none_rounded,    t('Alerts',         'التنبيهات',     'Alertes'),         isDark, scale),
-                        _item(4, Icons.notes_outlined,                t('Notes',          'الملاحظات',     'Notes'),           isDark, scale),
-                        _item(5, Icons.bar_chart_outlined,            t('Reports',        'التقارير',      'Rapports'),        isDark, scale),
-                        _item(6, Icons.admin_panel_settings_outlined, t('Administration', 'الإدارة',       'Administration'),  isDark, scale),
+                        _item(0, Icons.grid_view_rounded,             t('Dashboard',      'لوحة التحكم', 'Tableau de bord'), isDark, scale),
+                        _item(1, Icons.people_outline_rounded,        t('Patients',       'المرضى',      'Patients'),        isDark, scale),
+                        _item(2, Icons.calendar_today_outlined,       t('Appointments',   'المواعيد',    'Rendez-vous'),     isDark, scale),
+                        _item(3, Icons.notifications_none_rounded,    t('Alerts',         'التنبيهات',   'Alertes'),         isDark, scale),
+                        _item(4, Icons.notes_outlined,                t('Notes',          'الملاحظات',   'Notes'),           isDark, scale),
+                        _item(5, Icons.bar_chart_outlined,            t('Reports',        'التقارير',    'Rapports'),        isDark, scale),
+                        _item(6, Icons.admin_panel_settings_outlined, t('Administration', 'الإدارة',     'Administration'),  isDark, scale),
                         Divider(color: divColor, height: 24, indent: 16, endIndent: 16),
-                        _item(7, Icons.settings_outlined,             t('Settings',       'الإعدادات',     'Paramètres'),      isDark, scale),
+                        _item(7, Icons.settings_outlined,             t('Settings',       'الإعدادات',   'Paramètres'),      isDark, scale),
                         const SizedBox(height: 12),
                       ]),
                     ),
                   ),
 
-                  // Doctor profile
+                  // ── Doctor profile ────────────────────────────────
                   _buildDoctorProfile(isDark, scale),
 
-                  // Logout
+                  // ── Logout ────────────────────────────────────────
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
                     child: ListTile(
                       shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12)),
@@ -172,7 +214,8 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
                 ]),
               ),
 
-              VerticalDivider(thickness: 1, width: 1, color: divColor),
+              VerticalDivider(
+                  thickness: 1, width: 1, color: divColor),
 
               // ══ CONTENT ══════════════════════════════════════════
               Expanded(
@@ -193,10 +236,10 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
     );
   }
 
-  // ── Nav item ─────────────────────────────────────────────
+  // ── Nav item ──────────────────────────────────────────────────────
   Widget _item(int idx, IconData icon, String label,
       bool isDark, double scale) {
-    final bool sel = _selectedIndex == idx;
+    final bool sel   = _selectedIndex == idx;
     final selBg  = isDark
         ? const Color(0xFF1882FF).withOpacity(0.15)
         : Colors.blue.shade50;
@@ -208,89 +251,85 @@ class _DoctorMainLayerState extends State<DoctorMainLayout> {
       child: ListTile(
         selected: sel,
         selectedTileColor: selBg,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12)),
         leading: Icon(icon, color: sel ? selCol : defCol, size: 20),
         title: Text(label,
             style: TextStyle(
               fontSize: 13.5 * scale,
-              color: sel ? selCol : (isDark ? Colors.white : Colors.grey.shade700),
-              fontWeight: sel ? FontWeight.w700 : FontWeight.normal,
+              color: sel
+                  ? selCol
+                  : (isDark ? Colors.white : Colors.grey.shade700),
+              fontWeight:
+                  sel ? FontWeight.w700 : FontWeight.normal,
             )),
         onTap: () => setState(() => _selectedIndex = idx),
       ),
     );
   }
 
-  // ── Doctor profile (Firestore + Realtime DB) ──────────────
+  // ── Doctor profile card (بيانات من state) ─────────────────────────
   Widget _buildDoctorProfile(bool isDark, double scale) {
-    if (_uid == null) return const SizedBox();
-    return StreamBuilder<DatabaseEvent>(
-      stream: FirebaseDatabase.instance.ref('users/$_uid').onValue,
-      builder: (_, snap) {
-        String name = 'Doctor', specialty = 'Specialist';
-        if (snap.hasData && snap.data!.snapshot.value != null) {
-          final d = snap.data!.snapshot.value as Map;
-          final fn = d['first_name']?.toString() ?? '';
-          final ln = d['last_name']?.toString() ?? '';
-          name      = '$fn $ln'.trim().isNotEmpty ? '$fn $ln'.trim() : 'Doctor';
-          specialty = d['specialty']?.toString() ?? 'Specialist';
-        }
-        // جلب الصورة من Firestore
-        return FutureBuilder<fst.DocumentSnapshot>(
-          future: fst.FirebaseFirestore.instance.collection('users').doc(_uid).get(),
-          builder: (_, photoSnap) {
-            String? photoUrl;
-            if (photoSnap.hasData && photoSnap.data!.exists) {
-              photoUrl = photoSnap.data!['photoUrl']?.toString();
-            }
-            return Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-              child: GestureDetector(
-                onTap: () => setState(() => _selectedIndex = 8), // ← index 8 = Profile
-                child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: isDark
-                      ? Colors.white.withOpacity(0.05)
-                      : Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFF1882FF).withOpacity(0.15)),
-                ),
-                child: Row(children: [
-                  CircleAvatar(
-                    backgroundColor: const Color(0xFF1882FF).withOpacity(0.2),
-                    backgroundImage: (photoUrl != null && photoUrl.isNotEmpty)
-                        ? NetworkImage(photoUrl) : null,
-                    child: (photoUrl == null || photoUrl.isEmpty)
-                        ? Text(
-                            name.isNotEmpty ? name[0].toUpperCase() : 'D',
-                            style: const TextStyle(
-                                color: Color(0xFF1882FF), fontWeight: FontWeight.bold),
-                          )
-                        : null,
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      child: GestureDetector(
+        onTap: () => setState(() => _selectedIndex = 8),
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withOpacity(0.05)
+                : Colors.blue.shade50,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+                color: const Color(0xFF1882FF).withOpacity(0.15)),
+          ),
+          child: Row(children: [
+            CircleAvatar(
+              backgroundColor:
+                  const Color(0xFF1882FF).withOpacity(0.2),
+              backgroundImage:
+                  (_doctorPhoto != null && _doctorPhoto!.isNotEmpty)
+                      ? NetworkImage(_doctorPhoto!)
+                      : null,
+              child: (_doctorPhoto == null || _doctorPhoto!.isEmpty)
+                  ? Text(
+                      _doctorName.isNotEmpty
+                          ? _doctorName[0].toUpperCase()
+                          : 'D',
+                      style: const TextStyle(
+                          color: Color(0xFF1882FF),
+                          fontWeight: FontWeight.bold),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _doctorName,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13 * scale,
+                      color: isDark
+                          ? Colors.white
+                          : const Color(0xFF0D1117),
+                    ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(name,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 13 * scale,
-                              color: isDark ? Colors.white : const Color(0xFF0D1117))),
-                      Text(specialty,
-                          style: TextStyle(
-                              color: Colors.grey, fontSize: 11 * scale)),
-                    ],
-                  )),
-                ]),
+                  Text(
+                    _doctorSpecialty,
+                    style: TextStyle(
+                        color: Colors.grey, fontSize: 11 * scale),
+                  ),
+                ],
               ),
-              ),  // GestureDetector
-            );
-          },
-        );
-      },
+            ),
+          ]),
+        ),
+      ),
     );
   }
 }

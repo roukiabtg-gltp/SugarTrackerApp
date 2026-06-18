@@ -106,7 +106,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                     borderRadius: BorderRadius.circular(24),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF8B5CF6).withOpacity(0.15),
+                        color: const Color(0xFF2563EB).withOpacity(0.15),
                         blurRadius: 40,
                         offset: const Offset(0, 16),
                       ),
@@ -119,7 +119,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: const BoxDecoration(
-                          color: Color(0xFF8B5CF6),
+                          color: Color(0xFF2563EB),
                           borderRadius: BorderRadius.vertical(
                             top: Radius.circular(24)),
                         ),
@@ -204,7 +204,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                                 color: const Color(0xFFF8F5FF),
                                 borderRadius: BorderRadius.circular(12),
                                 border: Border.all(
-                                  color: const Color(0xFF8B5CF6).withOpacity(0.15)),
+                                  color: const Color(0xFF2563EB).withOpacity(0.15)),
                               ),
                               child: Text(
                                 data['content'] ?? '',
@@ -227,7 +227,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                           child: ElevatedButton(
                             onPressed: () => Navigator.pop(ctx),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF8B5CF6),
+                              backgroundColor: const Color(0xFF2563EB),
                               padding: const EdgeInsets.symmetric(vertical: 14),
                               elevation: 0,
                               shape: RoundedRectangleBorder(
@@ -257,7 +257,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
   Widget build(BuildContext context) {
     if (_loading) {
       return const Center(
-        child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+        child: CircularProgressIndicator(color: Color(0xFF2563EB)));
     }
     if (_doctorId == null) {
       return const Center(
@@ -272,7 +272,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
           // ── Loading ──
           if (snap.connectionState == ConnectionState.waiting) {
             return const Center(
-              child: CircularProgressIndicator(color: Color(0xFF8B5CF6)));
+              child: CircularProgressIndicator(color: Color(0xFF2563EB)));
           }
 
           final isEmpty =
@@ -303,11 +303,11 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                       Container(
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF8B5CF6).withOpacity(0.1),
+                          color: const Color(0xFF2563EB).withOpacity(0.1),
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: const Icon(Icons.mail_outlined,
-                          color: Color(0xFF8B5CF6), size: 28),
+                          color: Color(0xFF2563EB), size: 28),
                       ),
                       const SizedBox(width: 16),
                       Expanded(
@@ -329,7 +329,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 10, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: const Color(0xFF8B5CF6),
+                                      color: const Color(0xFF2563EB),
                                       borderRadius: BorderRadius.circular(20),
                                     ),
                                     child: Text(
@@ -357,10 +357,10 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                         TextButton.icon(
                           onPressed: () => _markAllRead(entries),
                           icon: const Icon(Icons.done_all,
-                            color: Color(0xFF8B5CF6), size: 18),
+                            color: Color(0xFF2563EB), size: 18),
                           label: const Text('Tout marquer lu',
                             style: TextStyle(
-                              color: Color(0xFF8B5CF6),
+                              color: Color(0xFF2563EB),
                               fontWeight: FontWeight.w600,
                               fontSize: 13,
                             ),
@@ -381,11 +381,11 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                         Container(
                           padding: const EdgeInsets.all(24),
                           decoration: BoxDecoration(
-                            color: const Color(0xFF8B5CF6).withOpacity(0.07),
+                            color: const Color(0xFF2563EB).withOpacity(0.07),
                             shape: BoxShape.circle,
                           ),
                           child: const Icon(Icons.mail_outline,
-                            size: 48, color: Color(0xFF8B5CF6)),
+                            size: 48, color: Color(0xFF2563EB)),
                         ),
                         const SizedBox(height: 16),
                         const Text('Aucune note reçue',
@@ -437,14 +437,14 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: isUnread
-                                      ? const Color(0xFF8B5CF6).withOpacity(0.4)
+                                      ? const Color(0xFF2563EB).withOpacity(0.4)
                                       : Colors.grey.shade100,
                                   width: isUnread ? 1.5 : 1,
                                 ),
                                 boxShadow: [
                                   BoxShadow(
                                     color: isUnread
-                                        ? const Color(0xFF8B5CF6).withOpacity(0.08)
+                                        ? const Color(0xFF2563EB).withOpacity(0.08)
                                         : Colors.black.withOpacity(0.03),
                                     blurRadius: 12,
                                     offset: const Offset(0, 4),
@@ -464,11 +464,11 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         color: isUnread
-                                            ? const Color(0xFF8B5CF6)
+                                            ? const Color(0xFF2563EB)
                                             : Colors.transparent,
                                         border: Border.all(
                                           color: isUnread
-                                              ? const Color(0xFF8B5CF6)
+                                              ? const Color(0xFF2563EB)
                                               : Colors.grey.shade300,
                                           width: 1.5,
                                         ),
@@ -507,14 +507,14 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                                                 padding: const EdgeInsets.symmetric(
                                                   horizontal: 8, vertical: 2),
                                                 decoration: BoxDecoration(
-                                                  color: const Color(0xFF8B5CF6)
+                                                  color: const Color(0xFF2563EB)
                                                       .withOpacity(0.1),
                                                   borderRadius:
                                                       BorderRadius.circular(20),
                                                 ),
                                                 child: const Text('Nouveau',
                                                   style: TextStyle(
-                                                    color: Color(0xFF8B5CF6),
+                                                    color: Color(0xFF2563EB),
                                                     fontSize: 10,
                                                     fontWeight: FontWeight.bold,
                                                   ),
@@ -555,7 +555,7 @@ class _SecretaryNotesPageState extends State<SecretaryNotesPage>
                                             Text('Appuyer pour lire →',
                                               style: TextStyle(
                                                 fontSize: 11,
-                                                color: const Color(0xFF8B5CF6)
+                                                color: const Color(0xFF2563EB)
                                                     .withOpacity(0.7),
                                                 fontStyle: FontStyle.italic,
                                               ),

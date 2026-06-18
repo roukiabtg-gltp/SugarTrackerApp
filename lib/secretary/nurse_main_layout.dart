@@ -11,7 +11,7 @@ import 'facture.dart';
 import '../desktop/auth/login_desktop.dart';
 import 'secretary_profile_page.dart';
 import 'secretary_settings_page.dart';
-import 'secretary_notes_page.dart'; // ← الصفحة الجديدة
+import 'secretary_notes_page.dart';
 
 class NurseMainLayout extends StatefulWidget {
   const NurseMainLayout({super.key});
@@ -23,6 +23,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
   int    _selectedIndex = 0;
   String _secretaryName = 'Secrétaire';
   String? doctorId;
+  String? _photoUrl;
 
   @override
   void initState() { super.initState(); _loadSecretaryInfo(); }
@@ -35,19 +36,19 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
       setState(() {
         _secretaryName = doc['name'] ?? 'Secrétaire';
         doctorId       = doc['doctorId'];
+        _photoUrl      = doc['photoUrl']?.toString();
       });
     }
   }
 
-  // ── Menu items (index 5 = Notes) ────────────────────────────────────
   final List<Map<String, dynamic>> _menuItems = [
     {'icon': Icons.home_outlined,          'label': 'Accueil'},
     {'icon': Icons.calendar_month_outlined,'label': 'Rendez-vous'},
     {'icon': Icons.access_time_outlined,   'label': "Liste d'Attente"},
     {'icon': Icons.people_outline,         'label': 'Patients'},
     {'icon': Icons.receipt_long_outlined,  'label': 'Facturation'},
-    {'icon': Icons.mail_outlined,          'label': 'Notes Médecin'}, // ← جديد (index 5)
-    {'icon': Icons.settings_outlined,      'label': 'Paramètres'},    // index 6
+    {'icon': Icons.mail_outlined,          'label': 'Notes Médecin'},
+    {'icon': Icons.settings_outlined,      'label': 'Paramètres'},
   ];
 
   @override
@@ -64,13 +65,13 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
               secretaryName: _secretaryName,
               onNavigate:    (i) => setState(() => _selectedIndex = i),
             ),
-            const AppointmentPage(),       // 1
-            const WaitingListPage(),       // 2
-            const PatientsPage(),          // 3
-            const FacturePage(),           // 4
-            const SecretaryNotesPage(),    // 5 ← الجديد
-            const SecretarySettingsPage(), // 6
-            const SecretaryProfilePage(),  // 7
+            const AppointmentPage(),
+            const WaitingListPage(),
+            const PatientsPage(),
+            const FacturePage(),
+            const SecretaryNotesPage(),
+            const SecretarySettingsPage(),
+            const SecretaryProfilePage(),
           ]),
         ),
       ]),
@@ -82,7 +83,6 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
       width: 260, color: Colors.white,
       child: Column(children: [
         const SizedBox(height: 32),
-        // Logo
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Row(children: [
@@ -113,7 +113,6 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
             padding: EdgeInsets.zero,
             itemCount: _menuItems.length,
             itemBuilder: (_, i) {
-              // Index 5 = Notes Médecin → on affiche le badge
               final isNotesItem = (i == 5);
               return isNotesItem && doctorId != null
                   ? _sidebarItemWithBadge(
@@ -145,20 +144,26 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
             ),
             child: Row(children: [
               CircleAvatar(
+                radius: 20,
                 backgroundColor: _selectedIndex == 7
                     ? const Color(0xFF2563EB)
                     : const Color(0xFF2563EB).withOpacity(0.1),
-                child: Text(
-                  _secretaryName.isNotEmpty
-                      ? _secretaryName[0].toUpperCase()
-                      : 'S',
-                  style: TextStyle(
-                    color: _selectedIndex == 7
-                        ? Colors.white
-                        : const Color(0xFF2563EB),
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                backgroundImage: (_photoUrl != null && _photoUrl!.isNotEmpty)
+                    ? NetworkImage(_photoUrl!)
+                    : null,
+                child: (_photoUrl == null || _photoUrl!.isEmpty)
+                    ? Text(
+                        _secretaryName.isNotEmpty
+                            ? _secretaryName[0].toUpperCase()
+                            : 'S',
+                        style: TextStyle(
+                          color: _selectedIndex == 7
+                              ? Colors.white
+                              : const Color(0xFF2563EB),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      )
+                    : null,
               ),
               const SizedBox(width: 10),
               Expanded(child: Column(
@@ -201,7 +206,6 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
     );
   }
 
-  // ── Normal sidebar item ──────────────────────────────────────────────
   Widget _sidebarItem({
     required IconData icon, required String label,
     required bool isSelected, required VoidCallback onTap,
@@ -236,7 +240,6 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
     );
   }
 
-  // ── Sidebar item WITH unread badge (Notes) ───────────────────────────
   Widget _sidebarItemWithBadge({
     required IconData icon, required String label,
     required bool isSelected, required String doctorId,
@@ -289,23 +292,6 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
                   fontSize: 14,
                 )),
               ),
-              if (unread > 0 && !isSelected)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '$unread',
-                    style: const TextStyle(
-                      color: Color(0xFF8B5CF6),
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
             ]),
           ),
         );
@@ -315,7 +301,7 @@ class _NurseMainLayoutState extends State<NurseMainLayout> {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  PULSE BADGE (animated red/purple dot)
+//  PULSE BADGE
 // ═══════════════════════════════════════════════════════════════════
 
 class _PulseBadge extends StatefulWidget {
@@ -353,7 +339,6 @@ class _PulseBadgeState extends State<_PulseBadge>
       child: Stack(
         alignment: Alignment.center,
         children: [
-          // Pulse ring
           AnimatedBuilder(
             animation: _ctrl,
             builder: (_, __) => Transform.scale(
@@ -363,19 +348,18 @@ class _PulseBadgeState extends State<_PulseBadge>
                 child: Container(
                   width: 14, height: 14,
                   decoration: const BoxDecoration(
-                    color: Color(0xFF8B5CF6),
+                    color: Color(0xFF2563EB),
                     shape: BoxShape.circle,
                   ),
                 ),
               ),
             ),
           ),
-          // Solid badge
           Container(
             width: 14, height: 14,
             alignment: Alignment.center,
             decoration: const BoxDecoration(
-              color: Color(0xFF8B5CF6),
+              color: Colors.red,
               shape: BoxShape.circle,
             ),
             child: widget.count > 9
@@ -399,7 +383,7 @@ class _PulseBadgeState extends State<_PulseBadge>
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  SECRETARY DASHBOARD CONTENT  (unchanged – copied as-is)
+//  SECRETARY DASHBOARD CONTENT
 // ═══════════════════════════════════════════════════════════════════
 
 class _SecretaryDashboardContent extends StatefulWidget {
@@ -418,7 +402,6 @@ class _SecretaryDashboardContent extends StatefulWidget {
 class _SecretaryDashboardContentState
     extends State<_SecretaryDashboardContent> {
 
-  // ── notification banner at top of dashboard ─────────────────────────
   Widget _buildNotifBanner() {
     if (widget.doctorId == null) return const SizedBox.shrink();
     return StreamBuilder<DatabaseEvent>(
@@ -437,12 +420,11 @@ class _SecretaryDashboardContentState
 
         if (unread.isEmpty) return const SizedBox.shrink();
 
-        // Latest unread
         final latest = unread.reduce((a, b) =>
             (a['timestamp'] ?? 0) > (b['timestamp'] ?? 0) ? a : b);
 
         return GestureDetector(
-          onTap: () => widget.onNavigate(5), // → notes page
+          onTap: () => widget.onNavigate(5),
           child: TweenAnimationBuilder<double>(
             tween: Tween(begin: 0, end: 1),
             duration: const Duration(milliseconds: 500),
@@ -460,14 +442,14 @@ class _SecretaryDashboardContentState
                 horizontal: 20, vertical: 14),
               decoration: BoxDecoration(
                 gradient: const LinearGradient(
-                  colors: [Color(0xFF8B5CF6), Color(0xFF6D28D9)],
+                  colors: [Color(0xFF2563EB), Color(0xFF1D4ED8)],
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                 ),
                 borderRadius: BorderRadius.circular(16),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF8B5CF6).withOpacity(0.35),
+                    color: const Color(0xFF2563EB).withOpacity(0.35),
                     blurRadius: 20,
                     offset: const Offset(0, 8),
                   ),
@@ -475,7 +457,6 @@ class _SecretaryDashboardContentState
               ),
               child: Row(
                 children: [
-                  // Icon with pulse
                   Stack(
                     clipBehavior: Clip.none,
                     children: [
@@ -495,7 +476,6 @@ class _SecretaryDashboardContentState
                     ],
                   ),
                   const SizedBox(width: 16),
-                  // Text
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -523,7 +503,6 @@ class _SecretaryDashboardContentState
                       ],
                     ),
                   ),
-                  // Arrow
                   Container(
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
@@ -732,7 +711,6 @@ class _SecretaryDashboardContentState
     return SingleChildScrollView(
       padding: const EdgeInsets.all(36),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        // Greeting
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text('$greeting, ${widget.secretaryName} 👋',
@@ -749,42 +727,48 @@ class _SecretaryDashboardContentState
         ]),
         const SizedBox(height: 24),
 
-        // ── NOTIFICATION BANNER ────────────────────────────────────────
         _buildNotifBanner(),
 
-        // Quick actions
         const Text('Actions Rapides',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
             color: Color(0xFF1E293B),
-          )),
+          ),
+        ),
         const SizedBox(height: 16),
-        Row(children: [
-          _ParticleButton(
-            label: 'Nouveau\nRendez-vous',
-            icon: Icons.add_circle_outline,
-            color: const Color(0xFF2563EB),
-            onTap: _showNewAppointmentDialog),
-          const SizedBox(width: 16),
-          _ParticleButton(
-            label: 'Nouveau Patient',
-            icon: Icons.person_add_outlined,
-            color: const Color(0xFF10B981),
-            onTap: _showNewPatientDialog),
-          const SizedBox(width: 16),
-          _ParticleButton(
-            label: "Liste d'Attente",
-            icon: Icons.access_time_outlined,
-            color: const Color(0xFFEA580C),
-            onTap: () => widget.onNavigate(2)),
-          const SizedBox(width: 16),
-          _ParticleButton(
-            label: 'Facturation',
-            icon: Icons.receipt_long_outlined,
-            color: const Color(0xFF7C3AED),
-            onTap: () => widget.onNavigate(4)),
-        ]),
+
+        Row(
+          children: [
+            _buildActionCard(
+              label: 'Nouveau\nRendez-vous',
+              icon: Icons.add_circle_outline,
+              color: const Color(0xFF2563EB),
+              onTap: _showNewAppointmentDialog,
+            ),
+            const SizedBox(width: 8),
+            _buildActionCard(
+              label: 'Nouveau\nPatient',
+              icon: Icons.person_add_outlined,
+              color: const Color(0xFF10B981),
+              onTap: _showNewPatientDialog,
+            ),
+            const SizedBox(width: 8),
+            _buildActionCard(
+              label: "Liste\nd'Attente",
+              icon: Icons.access_time_outlined,
+              color: const Color(0xFFEA580C),
+              onTap: () => widget.onNavigate(2),
+            ),
+            const SizedBox(width: 8),
+            _buildActionCard(
+              label: 'Facturation',
+              icon: Icons.receipt_long_outlined,
+              color: const Color(0xFF7C3AED),
+              onTap: () => widget.onNavigate(4),
+            ),
+          ],
+        ),
         const SizedBox(height: 36),
         _StatsRow(doctorId: widget.doctorId),
         const SizedBox(height: 36),
@@ -831,7 +815,7 @@ class _SecretaryDashboardContentState
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  PARTICLE BUTTON  (unchanged)
+//  PARTICLE BUTTON
 // ═══════════════════════════════════════════════════════════════════
 
 class _ParticleButton extends StatefulWidget {
@@ -999,7 +983,7 @@ class _ParticleWidgetState extends State<_ParticleWidget>
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  STATS ROW  (unchanged)
+//  STATS ROW
 // ═══════════════════════════════════════════════════════════════════
 
 class _StatsRow extends StatelessWidget {
@@ -1087,7 +1071,7 @@ class _StatsRow extends StatelessWidget {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  TODAY APPOINTMENTS  (unchanged)
+//  TODAY APPOINTMENTS
 // ═══════════════════════════════════════════════════════════════════
 
 class _TodayAppointments extends StatefulWidget {
@@ -1219,5 +1203,42 @@ class _TodayAppointmentsState extends State<_TodayAppointments> {
       border: Border.all(color: const Color(0xFFE5E7EB)),
     ),
     child: child,
+  );
+}
+
+Widget _buildActionCard({
+  required String label,
+  required IconData icon,
+  required Color color,
+  required VoidCallback onTap,
+}) {
+  return Expanded(
+    child: InkWell(
+      onTap: onTap,
+      child: Container(
+        height: 110,
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color.withOpacity(0.3)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 28),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: color,
+                fontWeight: FontWeight.bold,
+                fontSize: 13,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
   );
 }

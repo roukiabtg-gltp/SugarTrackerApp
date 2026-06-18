@@ -16,8 +16,8 @@ class _AlertsPageState extends State<AlertsPage>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
-  // ✅ الإصلاح الجوهري: الـ refs تُنشأ مرة واحدة فقط في initState
-  // وليس في build() الذي يُستدعى في كل مرة
+  // Les refs sont créées une seule fois dans initState
+  // et non dans build() qui est appelé à chaque rendu
   late final DatabaseReference _alertsRef;
   late final DatabaseReference _emergenciesRef;
 
@@ -25,7 +25,6 @@ class _AlertsPageState extends State<AlertsPage>
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    // ✅ هنا وليس في build()
     _alertsRef     = FirebaseDatabase.instance.ref("doctors/${widget.doctorId}/alerts");
     _emergenciesRef = FirebaseDatabase.instance.ref("doctors/${widget.doctorId}/emergencies");
   }
@@ -53,14 +52,13 @@ class _AlertsPageState extends State<AlertsPage>
           indicatorColor: const Color(0xFF2563EB),
           tabs: const [
             Tab(icon: Icon(Icons.warning_amber_rounded), text: "Alertes Glycémie"),
-            Tab(icon: Icon(Icons.sos_rounded), text: "Appels SOS الطوارئ"),
+            Tab(icon: Icon(Icons.sos_rounded), text: "Appels SOS"),
           ],
         ),
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          // ✅ نمرر الـ ref الثابت — لا يُعاد إنشاؤه أبداً
           _AlertsTabKeepAlive(doctorId: widget.doctorId, ref: _alertsRef),
           _EmergenciesTabKeepAlive(doctorId: widget.doctorId, ref: _emergenciesRef),
         ],
@@ -70,7 +68,7 @@ class _AlertsPageState extends State<AlertsPage>
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// تاب إنذارات السكر
+// Onglet des alertes glycémie
 // ════════════════════════════════════════════════════════════════════════
 class _AlertsTabKeepAlive extends StatefulWidget {
   final String doctorId;
@@ -91,13 +89,12 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
   final AudioPlayer _audioPlayer = AudioPlayer();
   int _prevCriticalCount = -1;
 
-  // ✅ Stream يُنشأ مرة واحدة في initState
   late final Stream<DatabaseEvent> _stream;
 
   @override
   void initState() {
     super.initState();
-    _stream = widget.ref.onValue; // ✅ ثابت لا يتغير
+    _stream = widget.ref.onValue;
   }
 
   @override
@@ -113,15 +110,15 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
 
   _GlucoseLevel _classify(double v) {
     if (v < _lowCritical) return const _GlucoseLevel(severity: 'critical',
-      color: Color(0xFFC62828), bg: Color(0xFFFCEBEB), labelAr: 'نقص سكر حاد');
+      color: Color(0xFFC62828), bg: Color(0xFFFCEBEB), label: 'Hypoglycémie sévère');
     if (v < _lowWarning)  return const _GlucoseLevel(severity: 'warning',
-      color: Color(0xFFEF6C00), bg: Color(0xFFFFF3E0), labelAr: 'نقص في السكر');
+      color: Color(0xFFEF6C00), bg: Color(0xFFFFF3E0), label: 'Glycémie basse');
     if (v > _highCritical) return const _GlucoseLevel(severity: 'critical',
-      color: Color(0xFFB71C1C), bg: Color(0xFFFDE8E8), labelAr: 'ارتفاع سكر حاد');
+      color: Color(0xFFB71C1C), bg: Color(0xFFFDE8E8), label: 'Hyperglycémie sévère');
     if (v > _highWarning)  return const _GlucoseLevel(severity: 'warning',
-      color: Color(0xFFE65100), bg: Color(0xFFFFF3E0), labelAr: 'ارتفاع في السكر');
+      color: Color(0xFFE65100), bg: Color(0xFFFFF3E0), label: 'Glycémie élevée');
     return const _GlucoseLevel(severity: 'normal',
-      color: Color(0xFF0288D1), bg: Color(0xFFE1F5FE), labelAr: 'قياس طبيعي');
+      color: Color(0xFF0288D1), bg: Color(0xFFE1F5FE), label: 'Mesure normale');
   }
 
   double _parseG(dynamic v) {
@@ -140,11 +137,11 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
       ScaffoldMessenger.of(context).showMaterialBanner(MaterialBanner(
         backgroundColor: const Color(0xFFB71C1C),
         leading: const Icon(Icons.warning_rounded, color: Colors.white, size: 28),
-        content: Text('🚨 إنذار جديد! ${newCount - _prevCriticalCount} حالة حرجة',
+        content: Text('🚨 Nouvelle alerte ! ${newCount - _prevCriticalCount} cas critique(s)',
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         actions: [TextButton(
           onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-          child: const Text('إخفاء', style: TextStyle(color: Colors.white70)),
+          child: const Text('Masquer', style: TextStyle(color: Colors.white70)),
         )],
       ));
       Future.delayed(const Duration(seconds: 5), () {
@@ -156,10 +153,10 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // مطلوب مع keepAlive
+    super.build(context); // requis avec keepAlive
 
     return StreamBuilder<DatabaseEvent>(
-      stream: _stream, // ✅ نفس الـ stream دائماً — لا يُعاد إنشاؤه
+      stream: _stream,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -241,9 +238,9 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
         underline: const SizedBox(),
         style: const TextStyle(color: Color(0xFF1E293B), fontWeight: FontWeight.w600),
         items: const [
-          DropdownMenuItem(value: 'all',        child: Text('Tous (الكل)')),
-          DropdownMenuItem(value: 'unresolved', child: Text('Non résolus (غير معالجة)')),
-          DropdownMenuItem(value: 'resolved',   child: Text('Résolus (المعالجة)')),
+          DropdownMenuItem(value: 'all',        child: Text('Tous')),
+          DropdownMenuItem(value: 'unresolved', child: Text('Non résolus')),
+          DropdownMenuItem(value: 'resolved',   child: Text('Résolus')),
         ],
         onChanged: (v) => setState(() => _filter = v!),
       ),
@@ -294,7 +291,7 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
                 color: isResolved ? Colors.grey[200] : e.level.bg,
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text("${e.level.labelAr} : ${data['glucose']} g/L",
+              child: Text("${e.level.label} : ${data['glucose']} g/L",
                   style: TextStyle(
                       color: isResolved ? Colors.grey[700] : e.level.color,
                       fontWeight: FontWeight.bold, fontSize: 12)),
@@ -315,7 +312,7 @@ class _AlertsTabKeepAliveState extends State<_AlertsTabKeepAlive>
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// تاب الـ SOS
+// Onglet SOS
 // ════════════════════════════════════════════════════════════════════════
 class _EmergenciesTabKeepAlive extends StatefulWidget {
   final String doctorId;
@@ -335,7 +332,6 @@ class _EmergenciesTabKeepAliveState extends State<_EmergenciesTabKeepAlive>
   final AudioPlayer _audioPlayer = AudioPlayer();
   int _prevSosCount = -1;
 
-  // ✅ Stream ثابت من initState
   late final Stream<DatabaseEvent> _stream;
 
   @override
@@ -361,11 +357,11 @@ class _EmergenciesTabKeepAliveState extends State<_EmergenciesTabKeepAlive>
       ScaffoldMessenger.of(context).showMaterialBanner(MaterialBanner(
         backgroundColor: const Color(0xFF7F1D1D),
         leading: const Icon(Icons.sos_rounded, color: Colors.white, size: 32),
-        content: const Text('🆘 استغاثة SOS جديدة من مريض!',
+        content: const Text('🆘 Nouvel appel SOS d\'un patient !',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15)),
         actions: [TextButton(
           onPressed: () => ScaffoldMessenger.of(context).hideCurrentMaterialBanner(),
-          child: const Text('إخفاء', style: TextStyle(color: Colors.white70)),
+          child: const Text('Masquer', style: TextStyle(color: Colors.white70)),
         )],
       ));
       Future.delayed(const Duration(seconds: 6), () {
@@ -418,7 +414,7 @@ class _EmergenciesTabKeepAliveState extends State<_EmergenciesTabKeepAlive>
               margin: const EdgeInsets.only(bottom: 12),
               child: ListTile(
                 leading: _SosPulseIcon(resolved: isResolved),
-                title: Text(item['patientName']?.toString() ?? 'Appel SOS الطوارئ',
+                title: Text(item['patientName']?.toString() ?? 'Appel SOS',
                     style: TextStyle(
                         fontWeight: FontWeight.bold,
                         color: isResolved ? Colors.black87 : const Color(0xFF991B1B))),
@@ -448,7 +444,7 @@ class _EmergenciesTabKeepAliveState extends State<_EmergenciesTabKeepAlive>
 }
 
 // ════════════════════════════════════════════════════════════════════════
-// كلاسات مساعدة
+// Classes utilitaires
 // ════════════════════════════════════════════════════════════════════════
 
 class _AlertEntry {
@@ -459,9 +455,9 @@ class _AlertEntry {
 }
 
 class _GlucoseLevel {
-  final String severity, labelAr;
+  final String severity, label;
   final Color color, bg;
-  const _GlucoseLevel({required this.severity, required this.color, required this.bg, required this.labelAr});
+  const _GlucoseLevel({required this.severity, required this.color, required this.bg, required this.label});
 }
 
 class _SosPulseIcon extends StatefulWidget {
